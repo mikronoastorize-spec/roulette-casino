@@ -1,4 +1,5 @@
 FROM node:22-alpine
+# Build: 2026-04-20-v2 (full deploy with game assets from GitHub Releases)
 RUN apk add --no-cache wget tar
 WORKDIR /app
 COPY package.json .
