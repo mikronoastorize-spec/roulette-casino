@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Casino Admin Panel</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold: #c9a84c; --dark: #0a0a0f; --dark-2: #111118; --dark-3: #1a1a24;
+      --green: #2ecc71; --red: #e74c3c; --blue: #3498db;
+    }
+    body { background: var(--dark); color: #fff; font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+    /* LOGIN */
+    #loginScreen { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .login-box {
+      background: var(--dark-3); border: 1px solid rgba(201,168,76,0.2);
+      border-radius: 14px; padding: 40px; width: 340px; text-align: center;
+    }
+    .login-box h2 { font-size: 1.4rem; color: var(--gold); margin-bottom: 8px; }
+    .login-box p { font-size: 0.8rem; color: rgba(255,255,255,0.35); margin-bottom: 24px; }
+    .inp { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 14px; color: #fff; font-size: 0.95rem; font-family: 'Inter', sans-serif; outline: none; margin-bottom: 14px; }
+    .inp:focus { border-color: rgba(201,168,76,0.5); }
+    .btn { padding: 12px 20px; border: none; border-radius: 8px; font-family: 'Inter', sans-serif; font-weight: 600; cursor: pointer; font-size: 0.88rem; transition: all 0.2s; }
+    .btn-gold { background: linear-gradient(135deg, #9a7a30, #c9a84c, #e5c96a); color: #000; width: 100%; }
+    .btn-gold:hover { opacity: 0.9; }
+    .btn-sm { padding: 6px 12px; font-size: 0.78rem; }
+    .btn-blue { background: rgba(52,152,219,0.2); border: 1px solid rgba(52,152,219,0.4); color: var(--blue); }
+    .btn-blue:hover { background: rgba(52,152,219,0.3); }
+    .btn-green { background: rgba(46,204,113,0.2); border: 1px solid rgba(46,204,113,0.4); color: var(--green); }
+    .btn-green:hover { background: rgba(46,204,113,0.3); }
+    .btn-red { background: rgba(231,76,60,0.2); border: 1px solid rgba(231,76,60,0.4); color: var(--red); }
+    .btn-red:hover { background: rgba(231,76,60,0.3); }
+    .btn-gray { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: rgba(255,255,255,0.5); }
+    .err { color: var(--red); font-size: 0.8rem; margin-top: 8px; }
+
+    /* MAIN */
+    #mainScreen { display: none; }
+    .topbar {
+      background: rgba(10,10,15,0.98); border-bottom: 1px solid rgba(201,168,76,0.15);
+      padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .topbar-title { font-size: 1rem; font-weight: 700; color: var(--gold); }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .content { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+
+    /* STAT CARDS */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-card {
+      background: var(--dark-3); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px; padding: 18px; position: relative; overflow: hidden;
+    }
+    .stat-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,0.02), transparent); }
+    .stat-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.3); margin-bottom: 8px; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #fff; }
+    .stat-value.gold { color: var(--gold); }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.blue { color: var(--blue); }
+
+    /* SECTIONS */
+    .section { background: var(--dark-2); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+    .section-header { padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between; }
+    .section-title { font-size: 0.9rem; font-weight: 600; color: rgba(255,255,255,0.8); }
+    .section-body { padding: 20px; }
+
+    /* SETTINGS */
+    .settings-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .setting-item { }
+    .setting-label { font-size: 0.72rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+    .setting-desc { font-size: 0.72rem; color: rgba(255,255,255,0.25); margin-top: 4px; }
+    .inp-inline { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 7px; padding: 9px 12px; color: #fff; font-family: 'Inter', sans-serif; font-size: 0.9rem; width: 100%; outline: none; }
+    .inp-inline:focus { border-color: rgba(201,168,76,0.4); }
+    .toggle { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .toggle input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--gold); cursor: pointer; }
+
+    /* PLAYERS TABLE */
+    .search-row { display: flex; gap: 10px; margin-bottom: 14px; }
+    .search-inp { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px 14px; color: #fff; font-family: 'Inter', sans-serif; font-size: 0.88rem; outline: none; }
+    .search-inp:focus { border-color: rgba(201,168,76,0.3); }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; padding: 10px 12px; color: rgba(255,255,255,0.3); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: nowrap; }
+    td { padding: 11px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .rtp-cell { font-weight: 600; }
+    .rtp-ok { color: var(--green); }
+    .rtp-hi { color: var(--red); }
+    .inactive-row td { opacity: 0.4; }
+    .actions { display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 600; }
+    .badge-on { background: rgba(46,204,113,0.2); color: var(--green); }
+    .badge-off { background: rgba(231,76,60,0.2); color: var(--red); }
+
+    /* MODAL */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; display: none; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--dark-3); border: 1px solid rgba(201,168,76,0.2); border-radius: 14px; padding: 28px; width: 380px; max-width: 90vw; }
+    .modal h3 { font-size: 1.05rem; margin-bottom: 16px; color: var(--gold); }
+    .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .modal-actions .btn { flex: 1; }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 20px; right: 20px; background: rgba(30,132,73,0.95); border-radius: 9px; padding: 13px 20px; font-size: 0.85rem; font-weight: 500; color: #fff; z-index: 9999; transform: translateY(80px); transition: transform 0.3s; pointer-events: none; }
+    #toast.show { transform: translateY(0); }
+    #toast.err { background: rgba(192,57,43,0.95); }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen">
+  <div class="login-box">
+    <h2>Admin Panel</h2>
+    <p>Casino yönetim paneline giriş yapın</p>
+    <input type="password" class="inp" id="adminPass" placeholder="Admin şifresi" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="btn btn-gold" onclick="doLogin()">Giriş</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- MAIN SCREEN -->
+<div id="mainScreen">
+  <div class="topbar">
+    <span class="topbar-title">Casino Admin</span>
+    <div class="topbar-right">
+      <button class="btn btn-sm btn-gray" onclick="refreshAll()">Yenile</button>
+      <button class="btn btn-sm btn-red" onclick="doLogout()">Çıkış</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <!-- STATS -->
+    <div class="stat-grid" id="statsGrid">
+      <div class="stat-card"><div class="stat-label">Toplam Oyuncu</div><div class="stat-value blue" id="sPlayers">—</div></div>
+      <div class="stat-card"><div class="stat-label">24s Aktif</div><div class="stat-value" id="sActive">—</div></div>
+      <div class="stat-card"><div class="stat-label">Toplam Bahis</div><div class="stat-value gold" id="sTotalBet">—</div></div>
+      <div class="stat-card"><div class="stat-label">Toplam Ödeme</div><div class="stat-value" id="sTotalWin">—</div></div>
+      <div class="stat-card"><div class="stat-label">Casino Kârı</div><div class="stat-value green" id="sProfit">—</div></div>
+      <div class="stat-card"><div class="stat-label">Gerçek RTP</div><div class="stat-value" id="sRtp">—</div></div>
+      <div class="stat-card"><div class="stat-label">Toplam Spin</div><div class="stat-value" id="sSpins">—</div></div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">RTP & Oyun Ayarları</span>
+        <button class="btn btn-sm btn-gold" onclick="saveSettings()">Kaydet</button>
+      </div>
+      <div class="section-body">
+        <div class="settings-row">
+          <div class="setting-item">
+            <div class="setting-label">House Edge (Ev Avantajı %)</div>
+            <input type="number" class="inp-inline" id="setHouseEdge" min="0" max="50" step="0.5" value="5"/>
+            <div class="setting-desc">Her kazançtan alınan yüzde. 5 = %5 ev avantajı, RTP=%95</div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">Başlangıç Bakiyesi (Cent)</div>
+            <input type="number" class="inp-inline" id="setStartBalance" min="1000" step="1000" value="100000"/>
+            <div class="setting-desc">Yeni oyuncuların başlangıç bakiyesi. 100000 = $1,000</div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">Global RTP Hedefi (%)</div>
+            <input type="number" class="inp-inline" id="setRtpTarget" min="50" max="100" step="1" value="95"/>
+            <div class="setting-desc">Tüm oyunlarda spin başına hedef kazanç oranı. 95 = %95 RTP</div>
+          </div>
+          <div class="setting-item">
+            <div class="setting-label">Dinamik RTP Hedefleme</div>
+            <div class="toggle">
+              <input type="checkbox" id="setDynamicRtp"/>
+              <label for="setDynamicRtp" style="font-size:0.85rem;color:rgba(255,255,255,0.5)">Etkinleştir (her oyuncuya bireysel RTP uygula)</label>
+            </div>
+            <div class="setting-desc">Açıksa kazanç House Edge yerine kişisel RTP hedefiyle ayarlanır</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KINGBET ENTEGRASYON -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Kingbet Entegrasyon Bilgileri</span>
+      </div>
+      <div class="section-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+          <div>
+            <div class="setting-label" style="margin-bottom:8px">iframe Embed Kodu (kingbet00.online)</div>
+            <pre style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;font-size:0.72rem;color:#a0cfff;overflow-x:auto;white-space:pre-wrap">&lt;iframe src="https://roulette-casino-production.up.railway.app/casino.html"
+  style="width:100%;height:100vh;border:none;"
+  allow="fullscreen"&gt;&lt;/iframe&gt;</pre>
+            <div class="setting-desc" style="margin-top:6px">Casino giriş sayfasını doğrudan embed edin</div>
+          </div>
+          <div>
+            <div class="setting-label" style="margin-bottom:8px">API Anahtarı (Kingbet Backend)</div>
+            <pre style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;font-size:0.72rem;color:#a0cfff;overflow-x:auto;white-space:pre-wrap">X-Kingbet-Key: kingbet_secret_2024
+
+POST /api/kingbet/session       → Oyuncu oturumu oluştur
+GET  /api/kingbet/balance/:user → Bakiye sorgula
+POST /api/kingbet/balance/:user → Bakiye güncelle
+GET  /api/kingbet/players       → Tüm oyuncular
+GET  /api/kingbet/stats         → Casino istatistikleri
+POST /api/kingbet/settings      → RTP/house edge ayarla</pre>
+            <div class="setting-desc" style="margin-top:6px">KINGBET_API_KEY env var ile değiştirin</div>
+          </div>
+          <div>
+            <div class="setting-label" style="margin-bottom:8px">Seamless Oyuncu Açma Örneği</div>
+            <pre style="background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;font-size:0.72rem;color:#a0cfff;overflow-x:auto;white-space:pre-wrap">POST /api/kingbet/session
+{
+  "playerId": "kb_user_123",
+  "username": "ahmet42",
+  "balanceCents": 50000
+}
+→ { "token": "kb_...", "gameUrl": "/casino-game.html?token=..." }</pre>
+            <div class="setting-desc" style="margin-top:6px">Token alın → gameUrl'yi iframe src olarak kullanın</div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-sm btn-blue" onclick="testKingbetStats()">Kingbet API Test Et</button>
+          <span id="kbTestResult" style="margin-left:12px;font-size:0.8rem;color:rgba(255,255,255,0.4)"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAYERS -->
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Oyuncular</span>
+        <button class="btn btn-sm btn-blue" onclick="loadPlayers()">Yenile</button>
+      </div>
+      <div class="section-body">
+        <div class="search-row">
+          <input type="text" class="search-inp" id="playerSearch" placeholder="Kullanıcı adı ara..." oninput="loadPlayers()"/>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Kullanıcı</th><th>Bakiye</th><th>Bahis</th><th>Kazanç</th><th>RTP</th><th>Spin</th><th>Son Giriş</th><th>Durum</th><th>İşlem</th>
+              </tr>
+            </thead>
+            <tbody id="playersBody"><tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,0.25);padding:20px">Yükleniyor...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BALANCE MODAL -->
+<div class="modal-overlay" id="balanceModal">
+  <div class="modal">
+    <h3 id="modalTitle">Bakiye Düzenle</h3>
+    <input type="hidden" id="modalPlayerId"/>
+    <div class="setting-label" style="margin-bottom:6px">İşlem Türü</div>
+    <select class="inp-inline" id="modalType" style="margin-bottom:14px" onchange="updateModalInputs()">
+      <option value="adjust">Ekle / Çıkar (±)</option>
+      <option value="set">Kesin Değer Ata</option>
+    </select>
+    <div class="setting-label" style="margin-bottom:6px" id="modalAmountLabel">Miktar (cent)</div>
+    <input type="number" class="inp-inline" id="modalAmount" placeholder="Örn: 50000 = $500" style="margin-bottom:6px"/>
+    <div class="setting-desc" id="modalHint">Pozitif: ekle, Negatif: çıkar. 100 = $1.00</div>
+    <div class="modal-actions">
+      <button class="btn btn-gold" onclick="applyBalance()">Uygula</button>
+      <button class="btn btn-gray" onclick="closeModal()">İptal</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast">İşlem başarılı</div>
+
+<script>
+let adminToken = null;
+
+function $ (id) { return document.getElementById(id); }
+function fmt(cents) { return '$' + (cents/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr), now = new Date();
+  const diff = Math.floor((now - d) / 1000);
+  if (diff < 60) return diff + 's';
+  if (diff < 3600) return Math.floor(diff/60) + 'dk';
+  if (diff < 86400) return Math.floor(diff/3600) + 'sa';
+  return Math.floor(diff/86400) + 'g';
+}
+function toast(msg, isErr) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.className = '', 3000);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json', 'x-admin-token': adminToken } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch('/api/admin' + path, opts);
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || 'Hata');
+  return d;
+}
+
+async function doLogin() {
+  const pass = $('adminPass').value;
+  try {
+    const d = await fetch('/api/admin/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ password: pass })
+    }).then(r => r.json());
+    if (!d.token) throw new Error(d.error || 'Hata');
+    adminToken = d.token;
+    $('loginScreen').style.display = 'none';
+    $('mainScreen').style.display = '';
+    refreshAll();
+  } catch(e) {
+    $('loginErr').textContent = e.message;
+  }
+}
+
+async function doLogout() {
+  adminToken = null;
+  $('mainScreen').style.display = 'none';
+  $('loginScreen').style.display = 'flex';
+  $('adminPass').value = '';
+  $('loginErr').textContent = '';
+}
+
+async function refreshAll() { await Promise.all([loadStats(), loadPlayers()]); }
+
+async function loadStats() {
+  try {
+    const d = await api('GET', '/stats');
+    $('sPlayers').textContent = d.playerCount;
+    $('sActive').textContent = d.activePlayers24h;
+    $('sTotalBet').textContent = fmt(d.totalBetCents);
+    $('sTotalWin').textContent = fmt(d.totalWinCents);
+    const profit = d.casinoProfitCents;
+    $('sProfit').textContent = fmt(profit);
+    $('sProfit').className = 'stat-value ' + (profit >= 0 ? 'green' : 'red');
+    $('sRtp').textContent = d.actualRtp !== null ? d.actualRtp + '%' : '—';
+    $('sSpins').textContent = d.spinCount.toLocaleString();
+
+    // Populate settings
+    const s = d.settings;
+    if (s.house_edge_percent) $('setHouseEdge').value = s.house_edge_percent;
+    if (s.starting_balance_cents) $('setStartBalance').value = s.starting_balance_cents;
+    if (s.rtp_target_percent) $('setRtpTarget').value = s.rtp_target_percent;
+    if (s.rtp_dynamic_enabled) $('setDynamicRtp').checked = s.rtp_dynamic_enabled === 'true';
+  } catch(e) { toast('Stats yüklenemedi: ' + e.message, true); }
+}
+
+async function loadPlayers() {
+  const search = $('playerSearch').value.trim();
+  try {
+    const d = await api('GET', '/players' + (search ? '?search=' + encodeURIComponent(search) : ''));
+    const tbody = $('playersBody');
+    if (!d.players.length) {
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,0.25);padding:20px">Oyuncu bulunamadı</td></tr>';
+      return;
+    }
+    tbody.innerHTML = d.players.map(p => `
+      <tr class="${!p.isActive ? 'inactive-row' : ''}">
+        <td style="color:rgba(255,255,255,0.3)">#${p.id}</td>
+        <td><strong>${escHtml(p.username)}</strong></td>
+        <td>${fmt(p.balanceCents)}</td>
+        <td style="color:rgba(255,255,255,0.55)">${fmt(p.totalBetCents)}</td>
+        <td style="color:rgba(255,255,255,0.55)">${fmt(p.totalWinCents)}</td>
+        <td class="rtp-cell ${p.rtp !== null ? (p.rtp > 100 ? 'rtp-hi' : 'rtp-ok') : ''}">${p.rtp !== null ? p.rtp + '%' : '—'}</td>
+        <td>${p.spinCount}</td>
+        <td style="color:rgba(255,255,255,0.35);font-size:0.75rem">${timeAgo(p.lastLogin)}</td>
+        <td><span class="badge ${p.isActive ? 'badge-on' : 'badge-off'}">${p.isActive ? 'Aktif' : 'Kapalı'}</span></td>
+        <td>
+          <div class="actions">
+            <button class="btn btn-sm btn-blue" onclick="openBalanceModal(${p.id}, '${escHtml(p.username)}')">Bakiye</button>
+            <button class="btn btn-sm ${p.isActive ? 'btn-red' : 'btn-green'}" onclick="togglePlayer(${p.id})">${p.isActive ? 'Kapat' : 'Aç'}</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { toast('Oyuncular yüklenemedi: ' + e.message, true); }
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function saveSettings() {
+  try {
+    await api('POST', '/settings', {
+      houseEdgePercent: parseFloat($('setHouseEdge').value),
+      startingBalanceCents: parseInt($('setStartBalance').value),
+      rtpTargetPercent: parseInt($('setRtpTarget').value),
+      dynamicRtp: $('setDynamicRtp').checked
+    });
+    toast('Ayarlar kaydedildi');
+    loadStats();
+  } catch(e) { toast('Hata: ' + e.message, true); }
+}
+
+function openBalanceModal(id, username) {
+  $('modalPlayerId').value = id;
+  $('modalTitle').textContent = username + ' — Bakiye Düzenle';
+  $('modalType').value = 'adjust';
+  $('modalAmount').value = '';
+  updateModalInputs();
+  $('balanceModal').classList.add('open');
+}
+function closeModal() { $('balanceModal').classList.remove('open'); }
+function updateModalInputs() {
+  const t = $('modalType').value;
+  $('modalAmountLabel').textContent = t === 'adjust' ? 'Miktar (cent, ±)' : 'Yeni Bakiye (cent)';
+  $('modalHint').textContent = t === 'adjust' ? 'Pozitif: ekle, Negatif: çıkar. 100 = $1.00' : 'Kesin bakiye. 100000 = $1,000';
+}
+async function applyBalance() {
+  const id = $('modalPlayerId').value;
+  const type = $('modalType').value;
+  const amt = parseInt($('modalAmount').value);
+  if (isNaN(amt)) { toast('Geçerli bir sayı girin', true); return; }
+  try {
+    if (type === 'adjust') {
+      await api('POST', `/player/${id}/balance`, { adjustCents: amt });
+    } else {
+      await api('POST', `/player/${id}/set-balance`, { balanceCents: amt });
+    }
+    toast('Bakiye güncellendi');
+    closeModal();
+    loadPlayers();
+  } catch(e) { toast('Hata: ' + e.message, true); }
+}
+async function togglePlayer(id) {
+  try {
+    const d = await api('POST', `/player/${id}/toggle`);
+    toast(d.username + ': ' + (d.isActive ? 'Aktif edildi' : 'Kapatıldı'));
+    loadPlayers();
+  } catch(e) { toast('Hata: ' + e.message, true); }
+}
+
+async function testKingbetStats() {
+  const el = $('kbTestResult');
+  el.textContent = 'Test ediliyor...';
+  el.style.color = 'rgba(255,255,255,0.4)';
+  try {
+    const r = await fetch('/api/kingbet/stats', { headers: { 'x-kingbet-key': 'kingbet_secret_2024' } });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    el.textContent = `OK — ${d.playerCount} oyuncu, Kâr: ${fmt(d.casinoProfitCents)}, RTP: ${d.actualRtp ?? '—'}%`;
+    el.style.color = '#2ecc71';
+  } catch(e) {
+    el.textContent = 'HATA: ' + e.message;
+    el.style.color = '#e74c3c';
+  }
+}
+
+$('adminPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+$('balanceModal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
+
+// Auto-refresh every 30s
+setInterval(() => { if (adminToken) refreshAll(); }, 30000);
+</script>
+</body>
+</html>
