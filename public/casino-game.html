@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Roulette Classic — Casino</title>
+
+  <!-- ── document.domain patch ──────────────────────────────────────────────
+       Playtech GWT tries to set document.domain = 'up.railway.app' which is a
+       public suffix — modern browsers throw SecurityError and GWT init crashes,
+       so MESSENGER never gets called.  We silently swallow the set operation
+       so GWT continues and connects to our MESSENGER normally.
+  ──────────────────────────────────────────────────────────────────────── -->
+  <script>
+    (function() {
+      try {
+        var _origDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'domain');
+        Object.defineProperty(document, 'domain', {
+          get: function() {
+            try { return _origDescriptor.get.call(document); } catch(e) { return window.location.hostname; }
+          },
+          set: function(val) {
+            try { _origDescriptor.set.call(document, val); } catch(e) {
+              // SecurityError suppressed — GWT continues normally
+              console.log('[domain-patch] Suppressed document.domain =', val);
+            }
+          },
+          configurable: true
+        });
+      } catch(e) { /* browser doesn't support override — ignore */ }
+    })();
+  </script>
+
+  <!-- Game assets must be resolved relative to /game/ro/ -->
+  <base href="/game/ro/"/>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold: #c9a84c;
+      --dark: #0a0a0f;
+      --dark-2: #111118;
+      --bar-h: 52px;
+      --panel-w: 260px;
+    }
+
+    html, body {
+      background: #000;
+      overflow: hidden;
+      width: 100%;
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ── TOP BAR ── */
+    #casino-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--bar-h);
+      background: rgba(10,10,15,0.96);
+      border-bottom: 1px solid rgba(201,168,76,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 9999;
+      backdrop-filter: blur(8px);
+    }
+
+    .bar-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1rem;
+      color: var(--gold);
+      white-space: nowrap;
+    }
+
+    .bar-balance {
+      text-align: center;
+    }
+    .bar-balance-label {
+      font-size: 0.55rem;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+    .bar-balance-amount {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #2ecc71;
+      transition: color 0.3s;
+    }
+
+    .bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .bar-avatar {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--gold), #7a5018);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #000;
+      flex-shrink: 0;
+    }
+    .bar-username { font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+    .bar-logout {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 5px;
+      color: rgba(255,255,255,0.35);
+      font-size: 0.72rem;
+      padding: 4px 9px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s;
+    }
+    .bar-logout:hover { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); }
+
+    /* ── SIDE PANEL ── */
+    #casino-panel {
+      position: fixed;
+      top: var(--bar-h); right: 0; bottom: 0;
+      width: var(--panel-w);
+      background: rgba(10,10,15,0.94);
+      border-left: 1px solid rgba(201,168,76,0.1);
+      z-index: 9998;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+
+    .panel-sec {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .panel-label {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.22);
+      margin-bottom: 8px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+    }
+    .stat-box {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .stat-box-label { font-size: 0.56rem; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .stat-box-val { font-size: 0.88rem; font-weight: 600; color: #fff; }
+    .stat-box-val.pos { color: #2ecc71; }
+    .stat-box-val.neg { color: #e74c3c; }
+
+    .history-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .history-label { padding: 10px 14px 4px; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.22); }
+    .history-scroll { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+    .history-scroll::-webkit-scrollbar { width: 3px; }
+    .history-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+    .h-empty { text-align: center; color: rgba(255,255,255,0.16); font-size: 0.76rem; padding: 18px 0; }
+    .h-row {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 6px;
+      padding: 7px 9px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      animation: fadeSlide 0.22s ease;
+    }
+    @keyframes fadeSlide { from { opacity:0; transform: translateY(-3px); } to { opacity:1; transform: translateY(0); } }
+    .h-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.76rem; font-weight: 700; flex-shrink: 0;
+    }
+    .h-num.red  { background: rgba(192,57,43,0.22); border: 1px solid rgba(192,57,43,0.4); color: #e74c3c; }
+    .h-num.blk  { background: rgba(10,10,10,0.5); border: 1px solid rgba(255,255,255,0.07); color: #aaa; }
+    .h-num.grn  { background: rgba(30,132,73,0.22); border: 1px solid rgba(30,132,73,0.4); color: #2ecc71; }
+    .h-info { flex: 1; min-width: 0; }
+    .h-amounts { display: flex; justify-content: space-between; }
+    .h-bet { font-size: 0.67rem; color: rgba(255,255,255,0.27); }
+    .h-net { font-size: 0.8rem; font-weight: 600; }
+    .h-net.pos { color: #2ecc71; }
+    .h-net.neg { color: #e74c3c; }
+    .h-net.zero { color: rgba(255,255,255,0.28); }
+    .h-time { font-size: 0.58rem; color: rgba(255,255,255,0.16); margin-top: 1px; }
+
+    /* ── WIN TOAST ── */
+    #win-toast {
+      position: fixed;
+      top: 60px; left: 50%;
+      transform: translateX(-50%) translateY(-12px);
+      background: linear-gradient(135deg, #c9a84c, #e5c96a);
+      color: #000;
+      padding: 9px 22px;
+      border-radius: 7px;
+      font-weight: 700;
+      font-size: 0.92rem;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 99999;
+      transition: all 0.28s;
+      box-shadow: 0 8px 28px rgba(201,168,76,0.45);
+      font-family: 'Inter', sans-serif;
+    }
+    #win-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 900px) {
+      #casino-panel { display: none; }
+    }
+
+    /* Tablet */
+    @media (max-width: 768px) {
+      :root { --bar-h: 46px; --panel-w: 0px; }
+      .bar-logo { font-size: 0.82rem; }
+      .bar-balance-amount { font-size: 1rem; }
+      .bar-username { display: none; }
+    }
+
+    /* Telefon */
+    @media (max-width: 480px) {
+      :root { --bar-h: 42px; }
+      #casino-bar { padding: 0 10px; gap: 6px; }
+      .bar-logo { font-size: 0.75rem; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+      .bar-balance-label { display: none; }
+      .bar-balance-amount { font-size: 0.95rem; }
+      .bar-avatar { width: 24px; height: 24px; font-size: 10px; }
+      .bar-logout { font-size: 0.65rem; padding: 3px 7px; }
+    }
+
+    /* Çok küçük telefon */
+    @media (max-width: 360px) {
+      :root { --bar-h: 40px; }
+      .bar-logo { display: none; }
+    }
+  </style>
+
+  <!-- ============================================================
+       CASINO MESSENGER — must be defined BEFORE any game script
+       ============================================================ -->
+  <script>
+    (function() {
+      // ── URL param veya sessionStorage'dan oturumu al ───────────
+      var _params = new URLSearchParams(window.location.search);
+      var _urlToken = _params.get('token');
+      var _urlUser  = _params.get('user');
+      var _urlBal   = _params.get('balance');
+      var _urlRtp   = _params.get('rtp');
+
+      if (_urlToken && _urlUser) {
+        sessionStorage.setItem('casinoToken', _urlToken);
+        sessionStorage.setItem('casinoUsername', _urlUser);
+        if (_urlBal) sessionStorage.setItem('casinoBalance', _urlBal);
+        if (_urlRtp) sessionStorage.setItem('casinoRtp', _urlRtp);
+        if (_params.get('uid')) sessionStorage.setItem('casinoUid', _params.get('uid'));
+      }
+      if (_params.get('return')) sessionStorage.setItem('casinoReturn', _params.get('return'));
+
+      var _token    = sessionStorage.getItem('casinoToken');
+      var _username = sessionStorage.getItem('casinoUsername');
+      var _balance  = parseInt(sessionStorage.getItem('casinoBalance') || '100000', 10);
+      var _rtp      = sessionStorage.getItem('casinoRtp');
+
+      // Per-session RTP kaydı — sunucuya bildir
+      if (_token && _rtp) {
+        fetch('/api/casino/setSessionRtp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: _token, rtp: parseFloat(_rtp) })
+        }).catch(function(){});
+      }
+
+      if (!_token || !_username) {
+        document.body.innerHTML = '<div style="position:fixed;inset:0;background:#050510;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#fff;text-align:center;"><div><div style="font-size:1.3rem;color:#c9a84c;margin-bottom:12px">Erişim Engellendi</div><div style="font-size:0.9rem;color:rgba(255,255,255,.4)">Bu oyuna Readdy üzerinden giriş yapın.</div></div></div>'; return;;
+        return;
+      }
+
+      // Bakiye API'dan çek (her zaman güncel kalsın)
+      fetch('/api/casino/player', {
+        headers: { 'x-casino-token': _token }
+      }).then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (d && typeof d.balanceCents === 'number') {
+            _balance = d.balanceCents;
+            sessionStorage.setItem('casinoBalance', _balance);
+            if (window._casinoUpdateBalance) window._casinoUpdateBalance(_balance);
+          }
+        }).catch(function(){});
+
+      var _pendingBet = 0;
+
+      function _num(v) {
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') return parseFloat(v) || 0;
+        return 0;
+      }
+
+      function _syncBalance(b) {
+        _balance = b;
+        sessionStorage.setItem('casinoBalance', b);
+        if (window._casinoUpdateBalance) window._casinoUpdateBalance(b);
+      }
+
+      // ── Casino MESSENGER ──────────────────────────────────────
+      // messenger.js (Playtech) window.MESSENGER'ı kurar ve request() methodunu
+      // window._casinoMessengerRequest'e delege eder (messenger.js patch edildi).
+      // Biz sadece _casinoMessengerRequest'i window'a expose ediyoruz.
+
+      function _casinoMessengerRequest(message, callback) {
+          // GWT sometimes calls with null callback (fire-and-forget notifications)
+          var _cb = callback && typeof callback.done === 'function'
+            ? callback
+            : { done: function(){} };
+
+          var msg;
+          try {
+            msg = (typeof message === 'string') ? JSON.parse(message) : message;
+          } catch(e) {
+            _cb.done('{"classifier":"IError","code":-1}');
+            return;
+          }
+          // Replace callback with safe wrapper
+          callback = _cb;
+
+          // classifier alanı farklı isimlerde gelebilir
+          var c = msg.classifier || msg.type || msg.event || msg.name || '';
+
+          // ── HER mesajı logla (spam olanlar hariç)
+          var _spamLog = {
+            'GameLoadingProgressNotification':1,'SpinAnimationStopped':1,
+            'SpinAnimationStarted':1,'IProgressResponse':1
+          };
+          if (!_spamLog[c]) {
+            console.log('[CASINO MESSENGER]', c || '(no-classifier)', JSON.stringify(msg).slice(0,300));
+          }
+
+          // ── RoundEnded / FreezeBalanceNotification: bakiye bilgisi içerebilir
+          if (c === 'RoundEnded' || c === 'ITransactionCompleteNotification') {
+            var nb = msg.balance || msg.newBalance || msg.balanceCents || msg.currentBalance;
+            if (nb !== undefined) {
+              var newBal = _num(nb);
+              // Dolar mı cent mi? 10000'den küçükse dolar kabul et, *100 yap
+              if (newBal < 10000 && newBal > 0) newBal = Math.round(newBal * 100);
+              if (newBal > 0) _syncBalance(newBal);
+            }
+            var winAmt   = _num(msg.win || msg.winAmount || msg.winCents || 0);
+            var betAmt   = _num(msg.bet || msg.betAmount || msg.betCents || msg.stake || 0);
+            if (winAmt < 10000 && winAmt > 0) winAmt = Math.round(winAmt * 100);
+            if (betAmt < 10000 && betAmt > 0) betAmt = Math.round(betAmt * 100);
+            if (betAmt > 0) {
+              // Sunucuya kaydet
+              fetch('/api/casino/win', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','x-casino-token':_token},
+                body: JSON.stringify({ winCents: winAmt, betCents: betAmt })
+              }).then(function(r){return r.json();}).then(function(d){
+                if (typeof d.balanceCents === 'number') _syncBalance(d.balanceCents);
+                if (window._casinoRecordSpin) window._casinoRecordSpin(betAmt, d.appliedWinCents || winAmt);
+              }).catch(function(){});
+            }
+            callback.done('{"classifier":"ISuccess"}');
+            return;
+          }
+
+          if (c === 'FreezeBalanceNotification') {
+            // Bahis tutarını kaydet — spin başladığında bahis miktarı burada
+            var betFreeze = _num(msg.amount || msg.bet || msg.betAmount || msg.value || 0);
+            if (betFreeze > 0) {
+              if (betFreeze < 10000) betFreeze = Math.round(betFreeze * 100);
+              _pendingBet = betFreeze;
+              fetch('/api/casino/bet', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','x-casino-token':_token},
+                body: JSON.stringify({ betCents: betFreeze })
+              }).then(function(r){return r.json();}).then(function(d){
+                if (typeof d.balanceCents === 'number') _syncBalance(d.balanceCents);
+              }).catch(function(){});
+            }
+            callback.done('{"classifier":"ISuccess"}');
+            return;
+          }
+
+          // ── Yoksayılan mesajlar
+          var ignored = {
+            'GameMessengerReadyNotification': 1,
+            'GameLoadingProgressNotification': 1,
+            'SpinAnimationStopped': 1,
+            'AutoPlayStoppedNotification': 1,
+            'GoldenChipRequest': 1,
+            'GameCanSwitchMainHandLayoutRequest': 1,
+            'GameErrorNotification': 1,
+            'GoToPageRequest': 1,
+            'IGameRefreshRequest': 1,
+            'OGWTimeoutNotification': 1,
+            'ISetActiveSceneRequest': 1,
+            'ISetUiElementsStateRequest': 1,
+            'ISetSettingsHelpStateRequest': 1,
+            'ISetPlatformSupportedOrientationRequest': 1,
+            'ISetDisableWarningsRequest': 1,
+            'IProgressResponse': 1,
+            'AutoPlayStartRequest': 1,
+            'IInfoMessageRequest': 1,
+            'IInsufficientBalanceRequest': 1,
+            'IGameBusyRequest': 1,
+            'SpinAnimationStarted': 1,
+            'RoundStarted': 1,
+            'IGameHistoryRequest': 1,
+            'IOpenURLRequest': 1,
+            'IExternalLinkRequest': 1,
+            'IChatToggleRequest': 1,
+            'RouletteAddCoinRequest': 1,
+            'RouletteRemoveCoinRequest': 1,
+            'RouletteClearBetsRequest': 1,
+            'RouletteRebetRequest': 1,
+            'RouletteAutospinRequest': 1,
+            'RouletteReadClientParamRequest': 1,
+            'RouletteWriteClientParamRequest': 1,
+            'RouletteDealRequest': 1,
+            'StatCollectRequest': 1,
+            'PlaytechAnalyticsConfRequest': 1,
+            'ClientDebugRequest': 1,
+            'ServerTimeRequest': 1,
+            'WaitingMessagesRequest': 1,
+            'SmartGameLimitsRequest': 1,
+            'GetPlayerLimitsInfoRequest': 1,
+            'GetLastKnownMessageIdRequest': 1,
+            'LogUserPreferencesRequest': 1,
+            'SetIpAddressRequest': 1,
+            'ProxyModeRequest': 1,
+            'GetActivatedGameFeaturesRequest': 1,
+            'GetUnlockedFeaturesRequest': 1,
+            'PauseGameRequest': 1,
+            'DeviceSpecificResizeRequest': 1,
+          };
+
+          if (ignored[c]) {
+            callback.done('{"classifier":"ISuccess"}');
+            return;
+          }
+
+          if (c === 'IGameLoggedInRequest' || c === 'ICasinoLoggedInRequest' || c === 'CasinoLoggedInRequest') {
+            callback.done('{"classifier":"ISuccess","loggedIn":true}');
+            return;
+          }
+
+          // ── Table game login (Roulette) ──────────────────────────
+          if (c === 'TableGameLoginRequest' || c === 'LoginRequest' || c === 'LoginWithTokenRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'TableGameLoginResponse',
+              success: true,
+              loggedIn: true,
+              username: _username,
+              balance: (_balance / 100).toFixed(2),
+              currency: 'TRY',
+              language: 'tr'
+            }));
+            return;
+          }
+
+          // ── Table money transaction (bets/wins for Roulette) ─────
+          if (c === 'TableMoneyTransactionRequest') {
+            // amount is in dollars (positive = win, negative = bet)
+            var txAmt = _num(msg.amount || msg.balance || msg.change || 0);
+            var txCents = Math.round(txAmt * 100);
+            if (txCents < 0) {
+              var txBet = Math.abs(txCents);
+              fetch('/api/casino/bet', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','x-casino-token':_token},
+                body: JSON.stringify({ betCents: txBet })
+              }).then(function(r){return r.json();}).then(function(d){
+                if (typeof d.balanceCents === 'number') _syncBalance(d.balanceCents);
+              }).catch(function(){});
+            } else if (txCents > 0) {
+              fetch('/api/casino/win', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','x-casino-token':_token},
+                body: JSON.stringify({ winCents: txCents, betCents: _pendingBet || txCents })
+              }).then(function(r){return r.json();}).then(function(d){
+                if (typeof d.balanceCents === 'number') _syncBalance(d.balanceCents);
+              }).catch(function(){});
+              _pendingBet = 0;
+            }
+            callback.done(JSON.stringify({
+              classifier: 'TableMoneyTransactionResponse',
+              success: true,
+              balance: (_balance / 100).toFixed(2),
+              currency: 'TRY'
+            }));
+            return;
+          }
+
+          // ── Bet limits ──────────────────────────────────────────
+          if (c === 'BetLimitsAllRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'ISuccess',
+              minBet: 0.10,
+              maxBet: 100000,
+              currency: 'TRY'
+            }));
+            return;
+          }
+
+          // ── Golden chip config ─────────────────────────────────
+          if (c === 'GetGoldenChipConfigurationRequest' || c === 'GetGoldenChipConfigRequest') {
+            callback.done('{"classifier":"ISuccess","enabled":false}');
+            return;
+          }
+
+          // ── Balance breakdown ───────────────────────────────────
+          if (c === 'BalanceBreakdownRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'BalanceBreakdownResponse',
+              cashBalance: (_balance / 100).toFixed(2),
+              bonusBalance: '0.00',
+              totalBalance: (_balance / 100).toFixed(2),
+              currency: 'TRY'
+            }));
+            return;
+          }
+
+          // ── Set game balance ────────────────────────────────────
+          if (c === 'ISetGameBalanceRequest' || c === 'SetGameBalanceRequest') {
+            var sgb = _num(msg.balance || msg.amount || 0);
+            if (sgb > 0) {
+              if (sgb < 10000) sgb = Math.round(sgb * 100);
+              _syncBalance(sgb);
+            }
+            callback.done('{"classifier":"ISuccess"}');
+            return;
+          }
+
+          if (c === 'GameConfigRequest' || c === 'IGetConfigRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'GameConfigResponse',
+              mode: 'online_Real',
+              currency: 'TRY',
+              locale: 'tr',
+              funMode: false
+            }));
+            return;
+          }
+
+          if (c === 'IGetRegulationsRequest') {
+            callback.done('{"classifier":"ISuccess","regulation":"UK"}');
+            return;
+          }
+
+          if (c === 'IUserDataRequest' || c === 'GetUserDataRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'IUserDataResponse',
+              username: _username,
+              currency: 'TRY',
+              balanceCents: _balance,
+              balance: (_balance / 100).toFixed(2)
+            }));
+            return;
+          }
+
+          if (c === 'IGetBalanceRequest' || c === 'GetBalanceRequest') {
+            callback.done(JSON.stringify({
+              classifier: 'IGetBalanceResponse',
+              balanceCents: _balance,
+              balance: (_balance / 100).toFixed(2),
+              currency: 'TRY'
+            }));
+            return;
+          }
+
+          if (c === 'ISetBalanceRequest' || c === 'SetBalanceRequest') {
+            // balanceCents → zaten cent; amount/balance → Playtech dolar gönderir, *100 yap
+            var amt;
+            if (msg.balanceCents !== undefined) {
+              amt = _num(msg.balanceCents);
+            } else {
+              amt = Math.round(_num(msg.amount !== undefined ? msg.amount : msg.balance || 0) * 100);
+            }
+            if (amt > 0) _syncBalance(amt);
+            callback.done('{"classifier":"ISuccess"}');
+            return;
+          }
+
+          if (c === 'ChangeBalanceRequest' || c === 'IChangeBalanceRequest' ||
+              c === 'PlaceBetRequest' || c === 'SpinRequest' || c === 'BetRequest') {
+
+            // Playtech Roulette dolar gönderir (ör. -10.00, +25.00).
+            // balanceChangeInCents alanı varsa cent, yoksa dolar → *100 çevir.
+            var rawVal, isCentsField = (msg.balanceChangeInCents !== undefined);
+            if (isCentsField) {
+              rawVal = _num(msg.balanceChangeInCents);
+            } else {
+              var dollarVal = _num(
+                msg.amount !== undefined ? msg.amount :
+                msg.change !== undefined ? msg.change :
+                msg.delta  !== undefined ? msg.delta  : 0
+              );
+              rawVal = Math.round(dollarVal * 100);
+            }
+            var change = rawVal;
+
+            if (change < 0) {
+              // ── BAHİS: sunucudan düş ──────────────────────────
+              var betAmt = Math.abs(change);
+              _pendingBet += betAmt;
+              fetch('/api/casino/bet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-casino-token': _token },
+                body: JSON.stringify({ betCents: betAmt })
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                if (typeof data.balanceCents === 'number') {
+                  _syncBalance(data.balanceCents);
+                } else {
+                  _syncBalance(Math.max(0, _balance - betAmt));
+                }
+                callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _balance }));
+              })
+              .catch(function() {
+                _syncBalance(Math.max(0, _balance - betAmt));
+                callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _balance }));
+              });
+              return;
+
+            } else if (change > 0) {
+              // ── KAZANÇ ────────────────────────────────────────
+              var betToReport = _pendingBet > 0 ? _pendingBet : Math.round(change / 36);
+              _pendingBet = 0;
+              fetch('/api/casino/win', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-casino-token': _token },
+                body: JSON.stringify({ winCents: change, betCents: betToReport })
+              })
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                if (typeof data.balanceCents === 'number') {
+                  _syncBalance(data.balanceCents);
+                  if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, data.appliedWinCents || change);
+                } else {
+                  _syncBalance(_balance + change);
+                  if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, change);
+                }
+                callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _balance }));
+              })
+              .catch(function() {
+                _syncBalance(_balance + change);
+                if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, change);
+                callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _balance }));
+              });
+              return;
+
+            } else {
+              callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _balance }));
+              return;
+            }
+          }
+
+          // Bilinmeyen tüm mesajlar — logla
+          console.warn('[CASINO MESSENGER] Unhandled classifier:', c, JSON.stringify(msg).slice(0,300));
+          callback.done('{"classifier":"ISuccess"}');
+      }
+
+      // Outer try-catch wrapper: prevents ANY error from crashing GWT
+      var _rawHandler = _casinoMessengerRequest;
+      _casinoMessengerRequest = function(message, callback) {
+        try { _rawHandler(message, callback); }
+        catch(e) {
+          console.error('[CASINO MESSENGER] Uncaught error:', e);
+          try { if (callback && callback.done) callback.done('{"classifier":"IError","code":-1}'); } catch(e2) {}
+        }
+      };
+
+      // messenger.js delegesi için window'a expose et
+      window._casinoMessengerRequest = _casinoMessengerRequest;
+
+      // ── KRİTİK: MESSENGER_VAR ve MESSENGER'ı buradan set et ──────────────
+      // GWT'nin Que() fonksiyonu $wnd.MESSENGER_VAR ve $wnd[MESSENGER_VAR]'ı
+      // messenger.js YÜKLENMEDEn önce kontrol edebilir. Bu yüzden burada,
+      // tüm game scriptlerinden ÖNCE, MESSENGER'ı doğrudan kuralım.
+      // messenger.js yüklenince bu objeyi yerinde bulur ve request()'i patch eder.
+      window.MESSENGER_VAR = 'MESSENGER';
+      window['MESSENGER'] = {
+        _isCasinoHandler: true,
+        request: function(message, callback) {
+          // Hemen _casinoMessengerRequest'e yönlendir
+          window._casinoMessengerRequest(message, callback);
+        }
+      };
+      console.log('[casino] window.MESSENGER set directly in IIFE — MESSENGER_VAR:', window.MESSENGER_VAR);
+      console.log('[casino] _casinoMessengerRequest exposed — ready for messenger.js');
+    })();
+  </script>
+
+  <script type="text/javascript" src="resources/js/viewport.js"></script>
+</head>
+<body>
+
+  <!-- ── CASINO OVERLAY UI ── -->
+  <div id="casino-bar">
+    <div class="bar-logo">🎰 Roulette Classic</div>
+    <div class="bar-balance">
+      <div class="bar-balance-label">Bakiye</div>
+      <div class="bar-balance-amount" id="barBalance">0,00 ₺</div>
+    </div>
+    <div class="bar-right">
+      <div class="bar-avatar" id="barAvatar">?</div>
+      <div class="bar-username" id="barUsername">...</div>
+      <button class="bar-logout" onclick="casinoLogout()">Çıkış</button>
+    </div>
+  </div>
+
+  <div id="casino-panel">
+    <div class="panel-sec">
+      <div class="panel-label">Oturum</div>
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-box-label">Turlar</div>
+          <div class="stat-box-val" id="stSpins">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">Kazanılan</div>
+          <div class="stat-box-val" id="stWins">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">Bahis</div>
+          <div class="stat-box-val" id="stBet">0 ₺</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-box-label">Kâr/Zarar</div>
+          <div class="stat-box-val" id="stNet">0 ₺</div>
+        </div>
+      </div>
+    </div>
+    <div class="history-wrap">
+      <div class="history-label">Tur Geçmişi</div>
+      <div class="history-scroll" id="histList">
+        <div class="h-empty">Henüz tur yok</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="win-toast"></div>
+
+  <!-- ── GAME LOADS HERE (GWT) ── -->
+  <script type="text/javascript">
+    document.write('<script type="text/javascript" src="resources/resources.nocache.js?v=' + new Date().getTime() + '"><\/script>');
+  </script>
+  <div id="automation"></div>
+
+  <!-- ── CASINO UI LOGIC ── -->
+  <script>
+    var RED_NUMS = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+    var _username = sessionStorage.getItem('casinoUsername') || '';
+    var _token    = sessionStorage.getItem('casinoToken') || '';
+    var _balance  = parseInt(sessionStorage.getItem('casinoBalance') || '100000');
+    var _stats    = { spins: 0, wins: 0, betCents: 0, netCents: 0 };
+    var _history  = [];
+
+    document.getElementById('barUsername').textContent = _username;
+    document.getElementById('barAvatar').textContent = _username.charAt(0).toUpperCase() || '?';
+
+    function fmt(c) {
+      var abs = Math.abs(c) / 100;
+      var formatted = abs.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (c < 0 ? '-' : '') + formatted + ' ₺';
+    }
+
+    function casinoLogout() {
+      var t = sessionStorage.getItem('casinoToken');
+      var ret = sessionStorage.getItem('casinoReturn') || null;
+      sessionStorage.clear();
+      if (t) {
+        fetch('/api/casino/logout', { method: 'POST', headers: { 'x-casino-token': t } }).catch(function(){});
+      }
+      if (ret) { window.location.href = ret; } else { history.back(); }
+    }
+
+    window._casinoUpdateBalance = function(balanceCents) {
+      _balance = balanceCents;
+      document.getElementById('barBalance').textContent = fmt(balanceCents);
+    };
+
+    window._casinoRecordSpin = function(betCents, winCents) {
+      var net = winCents - betCents;
+      _stats.spins++;
+      _stats.betCents += betCents;
+      _stats.netCents += net;
+      if (winCents > betCents) _stats.wins++;
+
+      _history.unshift({ bet: betCents, win: winCents, net: net, ts: Date.now() });
+      if (_history.length > 30) _history.pop();
+
+      // Update stats
+      document.getElementById('stSpins').textContent = _stats.spins;
+      document.getElementById('stWins').textContent = _stats.wins;
+      document.getElementById('stBet').textContent = fmt(_stats.betCents);
+      var netEl = document.getElementById('stNet');
+      netEl.textContent = (_stats.netCents >= 0 ? '+' : '') + fmt(_stats.netCents);
+      netEl.className = 'stat-box-val ' + (_stats.netCents > 0 ? 'pos' : _stats.netCents < 0 ? 'neg' : '');
+
+      // Render history
+      var list = document.getElementById('histList');
+      list.innerHTML = _history.map(function(r) {
+        var colorClass = r.result === 0 ? 'grn' : RED_NUMS.has(r.result) ? 'red' : 'blk';
+        var nc = r.net > 0 ? 'pos' : r.net < 0 ? 'neg' : 'zero';
+        var ns = (r.net > 0 ? '+' : '') + fmt(r.net);
+        var t = new Date(r.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return '<div class="h-row">'
+          + '<div class="h-num blk">?</div>'
+          + '<div class="h-info">'
+          +   '<div class="h-amounts">'
+          +     '<span class="h-bet">Bahis: ' + fmt(r.bet) + '</span>'
+          +     '<span class="h-net ' + nc + '">' + ns + '</span>'
+          +   '</div>'
+          +   '<div class="h-time">' + t + '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+
+      // Win toast
+      if (net > 0) {
+        var toast = document.getElementById('win-toast');
+        toast.textContent = '🎉 Kazandınız! +' + fmt(net);
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 2800);
+      }
+    };
+
+    // Init balance display
+    window._casinoUpdateBalance(_balance);
+  </script>
+
+</body>
+</html>
