@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Wolf Gold — Casino</title>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold: #c9a84c;
+      --blue: #3b82f6;
+      --dark: #0a0a0f;
+      --bar-h: 52px;
+    }
+    html, body { background: #000; overflow: hidden; width: 100%; height: 100%; font-family: 'Inter', sans-serif; }
+
+    /* TOP BAR */
+    #casino-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: var(--bar-h);
+      background: rgba(5,5,15,0.97);
+      border-bottom: 1px solid rgba(201,168,76,0.18);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 9999; backdrop-filter: blur(8px);
+    }
+    .bar-logo { font-family: 'Playfair Display', serif; font-size: 0.95rem; color: var(--gold); white-space: nowrap; }
+    .bar-balance { text-align: center; }
+    .bar-balance-label { font-size: 0.55rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.12em; }
+    .bar-balance-amount { font-size: 1.15rem; font-weight: 700; color: #2ecc71; transition: color 0.3s; }
+    .bar-right { display: flex; align-items: center; gap: 8px; }
+    .bar-avatar { width: 28px; height: 28px; background: linear-gradient(135deg, var(--gold), #7a5018); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #000; flex-shrink: 0; }
+    .bar-username { font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+    .bar-logout { background: linear-gradient(135deg,#e63946,#c1121f); border: none; border-radius: 7px; color: #fff; font-size: 0.78rem; font-weight: 600; padding: 6px 14px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.18s; box-shadow: 0 2px 8px rgba(230,57,70,0.45); letter-spacing: 0.02em; }
+    .bar-logout:hover { background: linear-gradient(135deg,#ff4d5e,#e63946); box-shadow: 0 4px 16px rgba(230,57,70,0.6); transform: translateY(-1px); }
+
+    /* GAME FRAME — full width, below top bar */
+    #game-frame {
+      position: fixed; top: var(--bar-h); left: 0; right: 0; bottom: 0;
+      border: none; background: #000; width: auto; height: auto;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      :root { --bar-h: 46px; }
+      .bar-logo { font-size: 0.82rem; }
+      .bar-balance-amount { font-size: 1rem; }
+      .bar-username { display: none; }
+    }
+    @media (max-width: 480px) {
+      :root { --bar-h: 42px; }
+      #casino-bar { padding: 0 10px; gap: 6px; }
+      .bar-logo { font-size: 0.75rem; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+      .bar-balance-label { display: none; }
+      .bar-balance-amount { font-size: 0.95rem; }
+      .bar-avatar { width: 24px; height: 24px; font-size: 10px; }
+      .bar-logout { font-size: 0.65rem; padding: 3px 7px; }
+    }
+    @media (max-width: 360px) {
+      :root { --bar-h: 40px; }
+      .bar-logo { display: none; }
+    }
+
+    /* LOADING */
+    #loading-screen {
+      position: fixed; inset: 0; background: #050510;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 99998; transition: opacity 0.5s ease;
+    }
+    #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+    .loading-title { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--gold); margin-bottom: 8px; }
+    .loading-sub { font-size: 0.8rem; color: rgba(255,255,255,0.35); margin-bottom: 32px; }
+    .loading-bar-wrap { width: 240px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+    .loading-bar { height: 100%; background: linear-gradient(90deg, #7a5018, var(--gold)); border-radius: 3px; animation: loadSlide 1.8s ease-in-out infinite; }
+    @keyframes loadSlide { 0%{width:8%;margin-left:0} 50%{width:60%;margin-left:40%} 100%{width:8%;margin-left:0} }
+    .loading-pct { font-size: 0.85rem; color: rgba(255,255,255,0.70); margin-bottom: 6px; font-weight: 500; }
+    #stuckBtn {
+      display: none; margin-top: 22px;
+      background: linear-gradient(135deg, #7a5018, #c9a84c);
+      color: #fff; border: none; border-radius: 8px;
+      padding: 12px 28px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 18px rgba(201,168,76,0.5);
+      transition: transform 0.15s;
+    }
+    #stuckBtn:hover { transform: scale(1.04); }
+    #stuckMsg { display: none; font-size: 0.75rem; color: #f5a623; margin-top: 10px; text-align: center; max-width: 260px; }
+  </style>
+
+  <script>
+    (function () {
+      var _p = new URLSearchParams(window.location.search);
+      if (_p.get('token') && _p.get('user')) {
+        sessionStorage.setItem('casinoToken',    _p.get('token'));
+        sessionStorage.setItem('casinoUsername', _p.get('user'));
+        if (_p.get('balance')) sessionStorage.setItem('casinoBalance', _p.get('balance'));
+        if (_p.get('uid'))     sessionStorage.setItem('casinoUid', _p.get('uid'));
+      }
+      if (_p.get('return')) sessionStorage.setItem('casinoReturn', _p.get('return'));
+      // Readdy'den gelen RTP parametresi varsa sunucuya kaydet
+      if (_p.get('rtp') && _p.get('token')) {
+        fetch('/api/casino/setSessionRtp?token=' + encodeURIComponent(_p.get('token')) + '&rtp=' + encodeURIComponent(_p.get('rtp'))).catch(function(){});
+      }
+
+      var _token    = sessionStorage.getItem('casinoToken');
+      var _username = sessionStorage.getItem('casinoUsername');
+      var _balance  = parseInt(sessionStorage.getItem('casinoBalance') || '100000', 10);
+
+      if (!_token || !_username) {
+        document.addEventListener('DOMContentLoaded', function() {
+          document.body.innerHTML = '<div style="position:fixed;inset:0;background:#050510;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#fff;text-align:center;"><div><div style="font-size:1.3rem;color:#c9a84c;margin-bottom:12px">Erişim Engellendi</div><div style="font-size:0.9rem;color:rgba(255,255,255,.4)">Bu oyuna Readdy üzerinden giriş yapın.</div></div></div>';
+        });
+        return;
+      }
+
+      /* ── SESSION INIT ──────────────────────────────────────────────────────
+       * kb_ token'ı player_sessions'a kaydederek gameService'in session'ı
+       * bulmasını sağlar. Kayıt olmadan gameService anonim $1.000'e düşüyor.
+       * Gerçek DB bakiyesini de alarak top bar'ı doğru başlatıyoruz.
+       *
+       * KRİTİK — RACE CONDITION ÖNLEME:
+       * frame.src ancak session/init DB'ye yazdıktan SONRA set edilir.
+       * Aksi halde oyun, token player_sessions'da yokken gameService'e bağlanır
+       * → anonim $1.000 fallback → CREDIT yanlış bakiye gösterir.
+       * ─────────────────────────────────────────────────────────────────────*/
+      var _sessionInitDone = false;
+      var _gameFrame       = null; /* _startGame tarafından doldurulur */
+
+      /* frame.src'yi set eden merkezi fonksiyon — iki yerden çağrılır */
+      function _launchFrame() {
+        if (!_gameFrame || !_sessionInitDone) return;
+        _gameFrame.src = '/games/WolfGold/gs2c/html5Game.html?cur=TRY&token=' + encodeURIComponent(_token);
+      }
+
+      window._pendingStartGame = _startGame;
+
+      /* session/init: önce yap, sonra frame'i başlat */
+      fetch('/api/casino/session/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token:    _token,
+          username: _username,
+          uid:      sessionStorage.getItem('casinoUid') || null
+        })
+      })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (d && d.ok && typeof d.balanceCents === 'number') {
+            _balance = d.balanceCents;
+            sessionStorage.setItem('casinoBalance', _balance);
+            if (window._casinoUpdateBalance) window._casinoUpdateBalance(d.balanceCents);
+          }
+          _sessionInitDone = true;
+          _launchFrame(); /* frame hazırsa hemen başlat */
+        })
+        .catch(function() {
+          /* init başarısız — yine de devam et (bağlantı sorunu) */
+          fetch('/api/casino/player', { headers: { 'x-casino-token': _token } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+              if (d && typeof d.balanceCents === 'number') {
+                _balance = d.balanceCents;
+                sessionStorage.setItem('casinoBalance', _balance);
+                if (window._casinoUpdateBalance) window._casinoUpdateBalance(d.balanceCents);
+              }
+            }).catch(function() {});
+          _sessionInitDone = true; /* hata olsa bile engel çıkarma */
+          _launchFrame();
+        });
+
+      var _prevBalance  = -1; /* oyunun son bildirdiği bakiye — oyun ilk kez bildirene kadar -1 (bilinmiyor) */
+      var _pendingBet   = 0;
+      var _gameReady    = false;
+
+      function _dollars(cents) { return (cents / 100).toFixed(2); }
+      function _fmtD(cents) { return (Math.abs(cents) / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+      function _cents(dollars) { return Math.round(parseFloat(dollars) * 100); }
+
+      /* _syncBalance: sadece sunucu bakiyesini ve üst bar'ı günceller.
+       * _prevBalance'a DOKUNMAZ — bu oyunun bildirdiği son bakiyeyi takip eder.
+       * EVT_RELOAD_BALANCE gönderme — oyunun kendi bakiye yönetimine karışmaz.
+       * Aksi halde: server ₺1.000.000 iken oyun $1.045 → reload → oyun $999k kazanç
+       * bildirir → sonsuz döngü → bakiye kendi kendine büyür. */
+      function _syncBalance(b) {
+        _balance = b;
+        sessionStorage.setItem('casinoBalance', b);
+        if (window._casinoUpdateBalance) window._casinoUpdateBalance(b);
+      }
+
+      var _host     = window.location.protocol + '//' + window.location.host;
+      var _datapath = _host + '/games/WolfGold/gs2c/common/v1/games-html5/games/vs/vs25wolfgold/';
+
+      window.sendToAdapter = function(rawData) {
+        var data;
+        try { data = (typeof rawData === 'string') ? JSON.parse(rawData) : rawData; }
+        catch(e) { return; }
+
+        var evt   = data.common || data.type || '';
+        var evKey = data.event || '';
+
+        if (evt === 'EVT_GET_CONFIGURATION') {
+          /* Turbo/auto-spin modu EVT_GET_CONFIGURATION'ı yeniden tetikleyebilir.
+           * _prevBalance: spin yanıtlarından gelen EN GÜNCEL oyun bakiyesi.
+           * _balance: sunucu polling'den gelen bakiye (2s gecikme olabilir).
+           * Önce _prevBalance kullan — turbo modda eski _balance'ın $1.000 vermesini önler. */
+          var _cfgBal = (_prevBalance >= 0) ? _prevBalance : _balance;
+          var gameConfig = {
+            datapath:             _datapath,
+            datapath_alternative: _datapath,
+            currency:             'TRY',
+            currencyOriginal:     'TRY',
+            balance:              _dollars(_cfgBal),
+            lang:                 'en',
+            jurisdiction:         '99',
+            demoMode:             '0',
+            showRealCash:         '1',
+            accountType:          'R',
+            styleName:            'generic',
+            hideLobbyButton:      true,
+            showLobbyButton:      false,
+            extend_events:        '1',
+            region:               'Other',
+            vendor:               'T',
+            clock:                '0',
+            minimode:             '0',
+            lobbyLaunched:        false,
+            LOGOUT:               '/gs2c/logout.do',
+            CLOSE_GAME:           '/gs2c/closeGame.do?symbol=vs25wolfgold',
+            SETTINGS:             '/gs2c/saveSettings.do',
+            RELOAD_BALANCE:       '/gs2c/reloadBalance.do',
+            RELOAD_JACKPOT:       '/gs2c/jackpot/reload.do',
+            REGULATION:           _host + '/gs2c/regulation/process.do?symbol=vs25wolfgold',
+            gameService:          _host + '/games/WolfGold/gs2c/ge/v3/gameService',
+            statisticsURL:        _host + '/games/WolfGold/gs2c/stats.do',
+            mgckey:               'stylename@generic~SESSION@' + _token,
+            MAGIC_KEY:            'stylename@generic~SESSION@' + _token,
+            GAMESERVICE:          '/gs2c/gameService',
+            sessionKeyV2:         [
+              'bqFHWEhzYx11RLYgN3qYwbfs9vR+XT+xAYrC8rZGbOxQyhnVqhUyNYTj2BEfokoRBTTPMonyEvdUy9BRTO5PU0ILEXMszMXanXf8GvLFHxC7Kt2nWEMtU/+DyIsan9aeUPl4xdpnUJ3UN/g3/a1rjRD9O9Eg0q3Z5bLgM5IHNfc=',
+              'j9danEDefQMXipux0E1manlKKb/wFy7keWozS8bxmUJkk07zEt4RvfcgA+Mk7ppXB++AOwcGr/hJFY2uPY+NcEi+28I3ehvZLMNrJ/FVzwRACAph3et5tJzTYyQKdX+NQz9CcY4HlbKqhnv5g/THgwgLJr1vKr5vIdJqHgA7Z/s='
+            ],
+          };
+
+          _sendToGame(JSON.stringify({
+            common: 'EVT_GET_CONFIGURATION',
+            args: { config: gameConfig }
+          }));
+
+          _gameReady = true;
+          window._hardReload = function() {
+            var btn = document.getElementById('stuckBtn');
+            var msg = document.getElementById('stuckMsg');
+            if (btn) btn.style.display = 'none';
+            if (msg) msg.style.display = 'block';
+            setTimeout(function() { window.location.reload(true); }, 600);
+          };
+
+          var _loadStart     = Date.now();
+          var _lastPctValue  = -1;
+          var _lastPctChange = Date.now();
+          var _stuckShown    = false;
+          var _loadTimerEl   = document.getElementById('loadTimer');
+          window._loadTimerInterval = setInterval(function() {
+            var elapsed = Math.round((Date.now() - _loadStart) / 1000);
+            if (_loadTimerEl) _loadTimerEl.textContent = elapsed + ' saniye geçti';
+
+            var bar   = document.getElementById('loadProgressBar');
+            var pctEl = document.getElementById('loadingPct');
+            var curPct = bar ? parseFloat(bar.style.width) : 0;
+
+            if (curPct < 1) {
+              var est = Math.min(95, Math.round((elapsed / 90) * 100));
+              if (bar) bar.style.width = est + '%';
+              curPct = est;
+            }
+
+            if (pctEl && !window._progressLogCount) {
+              if      (elapsed < 5)  pctEl.textContent = 'Motor başlatılıyor...';
+              else if (elapsed < 20) pctEl.textContent = 'Oyun dosyaları yükleniyor...';
+              else if (elapsed < 50) pctEl.textContent = 'Grafikler hazırlanıyor...';
+              else                   pctEl.textContent = 'Neredeyse hazır...';
+            }
+
+            if (Math.round(curPct) !== Math.round(_lastPctValue)) {
+              _lastPctValue  = curPct;
+              _lastPctChange = Date.now();
+            }
+            var stuckSec = Math.round((Date.now() - _lastPctChange) / 1000);
+            if (!_stuckShown && stuckSec >= 45 && curPct < 95) {
+              _stuckShown = true;
+              var btn = document.getElementById('stuckBtn');
+              if (btn) btn.style.display = 'inline-block';
+            }
+          }, 1000);
+
+          if (!window._loadFallback) {
+            window._loadFallback = setTimeout(function() { _hideLoadingScreen(); }, 180000);
+          }
+          return;
+        }
+
+        if (evt === 'EVT_GET_BALANCE' || evt === 'EVT_RELOAD_BALANCE') {
+          /* Oyun balance istediğinde EN GÜNCEL değeri gönder.
+           * Öncelik: _prevBalance (son spin'den sonra güncellenir, en doğru)
+           * Fallback: _balance (sunucu polling, 2s'de bir — _prevBalance henüz -1 ise)
+           * Hiçbir yanıt vermemek oyunun $1.000 default'una düşmesine yol açıyor. */
+          var _balToSend = (_prevBalance >= 0) ? _prevBalance : _balance;
+          _sendToGame(JSON.stringify({
+            common: 'EVT_RELOAD_BALANCE',
+            args: { balance: _dollars(_balToSend), currency: 'TRY' }
+          }));
+          return;
+        }
+
+        var evtName = data.event || '';
+
+        if (evtName === 'gameLoaded' || evtName === 'gameLoadingFinished' || evtName === 'gameNotBusy' ||
+            evt === 'EVT_GAME_LOAD_COMPLITED') {
+          window._gameFullyLoaded = true;
+          if (window._loadTimerInterval) { clearInterval(window._loadTimerInterval); window._loadTimerInterval = null; }
+          if (window._loadFallback) { clearTimeout(window._loadFallback); window._loadFallback = null; }
+          _hideLoadingScreen();
+          return;
+        }
+
+        if (evtName === 'loaded' || evt === 'loaded') {
+          if (window._loadFallback) { clearTimeout(window._loadFallback); }
+          window._loadFallback = setTimeout(function() { _hideLoadingScreen(); }, 90000);
+          var pctEl2 = document.getElementById('loadingPct');
+          if (pctEl2) pctEl2.textContent = 'Grafikler yükleniyor...';
+          return;
+        }
+
+        if (evtName === 'loadingProgress' || evt === 'loadingProgress') {
+          var rawPct = data.progress !== undefined ? data.progress :
+                       data.percent  !== undefined ? data.percent  :
+                       data.loaded   !== undefined ? data.loaded   : 0;
+          var pct = rawPct > 1 ? rawPct : rawPct * 100;
+          var pctEl = document.getElementById('loadingPct');
+          if (pct > 0 && pctEl) {
+            pctEl.textContent = 'Yükleniyor: ' + Math.round(pct) + '%';
+            var bar = document.getElementById('loadProgressBar');
+            if (bar) bar.style.width = Math.min(100, Math.round(pct)) + '%';
+            if (typeof _lastPctChange !== 'undefined') { _lastPctChange = Date.now(); }
+          }
+          if (pct >= 99) { setTimeout(function() { _hideLoadingScreen(); }, 800); }
+          return;
+        }
+
+        if (evt === 'EVT_GAME_PAUSED' || evtName === 'gamePaused') {
+          _sendToGame(JSON.stringify({ common: 'EVT_RESUME_GAME', args: {} }));
+          return;
+        }
+
+        if (evt === 'EVT_CLOSE' || evt === 'CloseGame' || evt === 'EVT_LOBBY') {
+          var _ret = sessionStorage.getItem('casinoReturn') || null;
+          if (_ret) { window.location.href = _ret; } else { history.back(); }
+          return;
+        }
+
+        var balField = data.balance !== undefined ? data.balance :
+                       data.currentBalance !== undefined ? data.currentBalance :
+                       data.newBalance !== undefined ? data.newBalance : null;
+
+        if (balField !== null) {
+          var newBal = _cents(balField);
+          /* Wolf Gold, tüm bahis/kazanç takibini gameService üzerinden yapıyor.
+           * Bu wrapper bet/win API'sını ÇAĞIRMAZ — gameService zaten DB'yi güncelliyor.
+           * Turbo spin / free spin gibi animasyonlarda oyun bakiyeyi sıfırlayıp tekrar
+           * yükseltebilir; bu sinyalleri izleyip /api/casino/win çağırırsak bakiye
+           * şişer. Sadece EVT_GET_BALANCE için referans noktasını takip ediyoruz. */
+          _prevBalance = newBal;
+        }
+      };
+
+      function _sendToGame(strData) {
+        var frame = document.getElementById('game-frame');
+        if (!frame || !frame.contentWindow) return;
+        try {
+          if (typeof frame.contentWindow.sendToGame === 'function') {
+            frame.contentWindow.sendToGame(strData);
+          } else {
+            frame.contentWindow.postMessage(strData, '*');
+          }
+        } catch(e) {
+          try { frame.contentWindow.postMessage(strData, '*'); } catch(e2) {}
+        }
+      }
+
+      var _loadingHidden = false;
+      var _balPollInterval = null;
+      var _lastSC   = -1; /* son görülen spin sayısı */
+      var _s0Bet    = -1; /* oturum başı DB toplam bahis */
+      var _s0Win    = -1; /* oturum başı DB toplam kazanç */
+      var _s0SC     = -1; /* oturum başı spin sayısı */
+
+      function _startBalancePoll() {
+        if (_balPollInterval) return;
+        _balPollInterval = setInterval(function() {
+          fetch('/api/casino/player', { headers: { 'x-casino-token': _token } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+              if (!d) return;
+
+              /* 1. Üst bar bakiyesi */
+              var nb = typeof d.balanceCents === 'number' ? d.balanceCents : parseInt(d.balanceCents || '0', 10);
+              if (nb !== _balance) {
+                _balance = nb;
+                sessionStorage.setItem('casinoBalance', _balance);
+                if (window._casinoUpdateBalance) window._casinoUpdateBalance(_balance);
+              }
+
+              var dbBet = parseInt(d.totalBetCents || '0', 10);
+              var dbWin = parseInt(d.totalWinCents || '0', 10);
+              var dbSC  = parseInt(d.spinCount     || '0', 10);
+
+              /* 2. İlk poll — referans noktaları */
+              if (_s0Bet < 0) { _s0Bet = dbBet; _s0Win = dbWin; _s0SC = dbSC; _lastSC = dbSC; return; }
+              _lastSC = dbSC;
+            }).catch(function() {});
+        }, 2000);
+      }
+
+      function _hideLoadingScreen() {
+        if (_loadingHidden) return;
+        _loadingHidden = true;
+        window._pollingStopped = true;
+        if (window._loadFallback) { clearTimeout(window._loadFallback); window._loadFallback = null; }
+        if (window._loadTimerInterval) { clearInterval(window._loadTimerInterval); window._loadTimerInterval = null; }
+        _startBalancePoll();
+        var ls = document.getElementById('loading-screen');
+        if (!ls) return;
+        ls.classList.add('fade-out');
+        setTimeout(function() { ls.style.display = 'none'; }, 550);
+      }
+
+      window.addEventListener('message', function(e) {
+        if (!e.data) return;
+        var data;
+        try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch(ex) { return; }
+        if (data && (data.common || data.type || data.event)) window.sendToAdapter(data);
+      });
+
+      function _startGame() {
+        _prevBalance = -1; /* oyun ilk balance mesajına kadar bilinmiyor */
+        if (window._casinoUpdateBalance) window._casinoUpdateBalance(_balance);
+
+        var frame = document.getElementById('game-frame');
+        if (frame) {
+          var cs = getComputedStyle(document.documentElement);
+          var barH = parseFloat(cs.getPropertyValue('--bar-h')) || 52;
+          frame.style.width  = window.innerWidth + 'px';
+          frame.style.height = (window.innerHeight - barH) + 'px';
+          frame.style.right  = 'auto';
+          frame.style.bottom = 'auto';
+
+          /* frame.src — session/init tamamlanana kadar bekliyoruz (race condition önlemi).
+           * _launchFrame() hem burada hem session/init.then() içinde çağrılır;
+           * hangisi geç kalırsa o gerçekten set eder. */
+          _gameFrame = frame;
+          _launchFrame();
+
+          window._gameFullyLoaded = false;
+          frame.onload = function() {
+            [300, 1200].forEach(function(d) {
+              setTimeout(function() {
+                if (!window._gameFullyLoaded) {
+                  try { frame.contentWindow.dispatchEvent(new Event('resize')); } catch(e) {}
+                }
+              }, d);
+            });
+
+            var _audioUnlocked = false;
+            document.addEventListener('click', function _unlockAudio() {
+              if (_audioUnlocked) return;
+              _audioUnlocked = true;
+              document.removeEventListener('click', _unlockAudio);
+              try {
+                var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                  var ctx = new AudioCtx();
+                  var buf = ctx.createBuffer(1, 1, 22050);
+                  var src = ctx.createBufferSource();
+                  src.buffer = buf;
+                  src.connect(ctx.destination);
+                  src.start(0);
+                  setTimeout(function() { try { ctx.close(); } catch(e) {} }, 100);
+                }
+              } catch(e) {}
+            }, { once: false });
+          };
+
+          var _resizeTimer = null;
+          window.addEventListener('resize', function() {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(function() {
+              var cs2 = getComputedStyle(document.documentElement);
+              var bh2 = parseFloat(cs2.getPropertyValue('--bar-h')) || 52;
+              frame.style.width  = window.innerWidth + 'px';
+              frame.style.height = (window.innerHeight - bh2) + 'px';
+            }, 80);
+          });
+        }
+      }
+
+      window._casinoUpdateBalance = function(b) {
+        var el = document.getElementById('balanceAmt');
+        if (el) el.textContent = _fmtD(b) + ' ₺';
+      };
+
+      window._casinoRecordSpin = function() {};
+    })();
+  </script>
+  <script>
+  (function(){
+    var PV = 'pv29';
+    function _launchWhenReady(){
+      /* Temizle: casino-* cache'lerindeki eski (versiyonsuz ya da eski pv) build.js girdilerini sil */
+      (window.caches ? caches.keys() : Promise.resolve([])).then(function(names){
+        return Promise.all(names.map(function(n){
+          return caches.open(n).then(function(c){
+            return c.keys().then(function(reqs){
+              return Promise.all(reqs.map(function(r){
+                if(r.url.includes('build.js') && !r.url.endsWith('&'+PV)) return c.delete(r);
+              }));
+            });
+          });
+        }));
+      }).then(function(){
+        /* Şimdi oyunu başlat */
+        if(document.readyState==='loading'){
+          document.addEventListener('DOMContentLoaded', function(){ if(window._pendingStartGame) window._pendingStartGame(); });
+        } else {
+          if(window._pendingStartGame) window._pendingStartGame();
+        }
+      }).catch(function(){
+        if(document.readyState==='loading'){
+          document.addEventListener('DOMContentLoaded', function(){ if(window._pendingStartGame) window._pendingStartGame(); });
+        } else {
+          if(window._pendingStartGame) window._pendingStartGame();
+        }
+      });
+    }
+
+    if(!('serviceWorker' in navigator)){ _launchWhenReady(); return; }
+
+    navigator.serviceWorker.register('/sw.js',{scope:'/'}).then(function(reg){
+      var newWorker = reg.installing || reg.waiting;
+      if(newWorker){
+        /* Yeni SW yükleniyor — kontrolü devralmasını bekle */
+        var done = false;
+        var timeout = setTimeout(function(){ if(!done){ done=true; _launchWhenReady(); } }, 4000);
+        navigator.serviceWorker.addEventListener('controllerchange', function onCtrl(){
+          navigator.serviceWorker.removeEventListener('controllerchange', onCtrl);
+          if(!done){ done=true; clearTimeout(timeout); _launchWhenReady(); }
+        });
+      } else {
+        _launchWhenReady();
+      }
+    }).catch(function(){ _launchWhenReady(); });
+  })();
+  </script>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loading-title">Wolf Gold</div>
+  <div class="loading-sub">Pragmatic Play</div>
+  <div class="loading-bar-wrap">
+    <div class="loading-bar" id="loadProgressBar" style="width:0%"></div>
+  </div>
+  <div class="loading-pct" id="loadingPct">Bağlanılıyor...</div>
+  <div class="loading-pct" style="font-size:0.72rem;color:rgba(255,255,255,0.28)" id="loadTimer"></div>
+  <button id="stuckBtn" onclick="window._hardReload && window._hardReload()">Yenile</button>
+  <div id="stuckMsg">Yenileniyor...</div>
+</div>
+
+<div id="casino-bar">
+  <div class="bar-logo">🐺 Wolf Gold</div>
+  <div class="bar-balance">
+    <div class="bar-balance-label">Bakiye</div>
+    <div class="bar-balance-amount" id="balanceAmt">₺0,00</div>
+  </div>
+  <div class="bar-right">
+    <div class="bar-avatar" id="avatarEl">?</div>
+    <span class="bar-username" id="usernameEl"></span>
+    <button class="bar-logout" onclick="doLogout()">Çıkış</button>
+  </div>
+</div>
+
+<iframe id="game-frame" allow="autoplay; fullscreen; clipboard-write; gyroscope"></iframe>
+
+<script>
+  (function() {
+    var _token    = sessionStorage.getItem('casinoToken');
+    var _username = sessionStorage.getItem('casinoUsername');
+    var _balance  = parseInt(sessionStorage.getItem('casinoBalance') || '0', 10);
+
+    if (!_token) { document.body.innerHTML = '<div style="position:fixed;inset:0;background:#050510;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#fff;text-align:center;"><div><div style="font-size:1.3rem;color:#c9a84c;margin-bottom:12px">Erişim Engellendi</div><div style="font-size:0.9rem;color:rgba(255,255,255,.4)">Bu oyuna Readdy üzerinden giriş yapın.</div></div></div>'; return;; return; }
+
+    var avatarEl   = document.getElementById('avatarEl');
+    var usernameEl = document.getElementById('usernameEl');
+    var balanceEl  = document.getElementById('balanceAmt');
+
+    if (avatarEl && _username)   avatarEl.textContent   = (_username[0] || '?').toUpperCase();
+    if (usernameEl && _username) usernameEl.textContent = _username;
+    function _fmtD2(c) { return (Math.abs(c) / 100).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    if (balanceEl)               balanceEl.textContent  = _fmtD2(_balance) + ' ₺';
+
+    window._casinoUpdateBalance = function(b) {
+      if (balanceEl) balanceEl.textContent = _fmtD2(b) + ' ₺';
+    };
+
+    window.doLogout = function() {
+      var t = sessionStorage.getItem('casinoToken');
+      var ret = sessionStorage.getItem('casinoReturn') || null;
+      sessionStorage.clear();
+      if (t) fetch('/api/casino/logout', { method: 'POST', headers: { 'x-casino-token': t } }).catch(function(){});
+      if (ret) { window.location.href = ret; } else { history.back(); }
+    };
+  })();
+</script>
+</body>
+</html>
