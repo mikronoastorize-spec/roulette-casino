@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Çıkış</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #050510; color: #fff; font-family: 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 20px; }
+    .msg { max-width: 340px; }
+    .msg h1 { font-size: 1.3rem; color: #c9a84c; margin-bottom: 10px; }
+    .msg p { font-size: 0.9rem; color: rgba(255,255,255,0.45); }
+  </style>
+  <script>
+    (function() {
+      try { window.close(); } catch(e) {}
+      try { if (window.opener) { window.opener.postMessage({ event: 'gameClose' }, '*'); window.close(); } } catch(e) {}
+      try { if (window.parent !== window) { window.parent.postMessage({ event: 'gameClose' }, '*'); } } catch(e) {}
+    })();
+  </script>
+</head>
+<body>
+  <div class="msg">
+    <h1>Oyundan Çıkıldı</h1>
+    <p>Readdy'ye geri dönebilirsiniz.</p>
+  </div>
+</body>
+</html>
