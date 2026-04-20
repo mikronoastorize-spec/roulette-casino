@@ -1,0 +1,12 @@
+{
+    "games": {
+        "ro_g": {
+            "path": "/game/ro/",
+            "game_code": "ro",
+            "title": "Classic Roulette",
+            "gameType": "ro_g",
+            "tableGame": true,
+            "funMode": true
+        }
+    }
+}
