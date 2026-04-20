@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <!-- Base URL ensures all relative paths resolve correctly for the game -->
+  <base href="/game/ro/"/>
+
+  <script type="text/javascript" src="resources/js/viewport.js"></script>
+  <script type="text/javascript">
+    (function() {
+      if (typeof console === 'undefined') {
+        var noop = function() {};
+        console = { log: noop, debug: noop, info: noop, error: noop, trace: noop, fatal: noop };
+      }
+    }());
+
+    // ============================================================
+    // CASINO MESSENGER — defined BEFORE messenger.js can init
+    // ============================================================
+    var MESSENGER_VAR = "MESSENGER";
+    var _casinoToken = null;
+    var _casinoBalance = 0;
+    var _pendingBetCents = 0;
+
+    try {
+      _casinoToken = window.parent.sessionStorage.getItem('casinoToken');
+      _casinoBalance = parseInt(window.parent.sessionStorage.getItem('casinoBalance') || '100000');
+    } catch(e) {}
+
+    function _cents(v) { return (typeof v === 'number') ? v : 0; }
+
+    function _notifyParent(type, data) {
+      try { window.parent.postMessage({ type: type, data: data }, '*'); } catch(e) {}
+    }
+
+    window[MESSENGER_VAR] = {
+      request: function(message, callback) {
+        var msg;
+        try { msg = JSON.parse(message); }
+        catch(e) {
+          callback.done('{"classifier":"IError","code":-1}');
+          return;
+        }
+
+        var c = msg.classifier;
+
+        switch(c) {
+          // ── Lifecycle / no-op messages ─────────────────────────
+          case 'GameMessengerReadyNotification':
+          case 'GameLoadingProgressNotification':
+          case 'SpinAnimationStopped':
+          case 'AutoPlayStoppedNotification':
+          case 'FreezeBalanceNotification':
+          case 'GoldenChipRequest':
+          case 'GameCanSwitchMainHandLayoutRequest':
+          case 'GameErrorNotification':
+          case 'GoToPageRequest':
+          case 'IGameRefreshRequest':
+          case 'OGWTimeoutNotification':
+          case 'ISetActiveSceneRequest':
+          case 'ISetUiElementsStateRequest':
+          case 'ISetSettingsHelpStateRequest':
+          case 'ISetPlatformSupportedOrientationRequest':
+          case 'ISetDisableWarningsRequest':
+          case 'IProgressResponse':
+          case 'AutoPlayStartRequest':
+          case 'IInfoMessageRequest':
+          case 'IInsufficientBalanceRequest':
+          case 'IGameBusyRequest':
+            callback.done('{"classifier":"ISuccess"}');
+            break;
+
+          // ── Auth ────────────────────────────────────────────────
+          case 'IGameLoggedInRequest':
+            callback.done('{"classifier":"ISuccess","loggedIn":true}');
+            break;
+
+          // ── Game Config ─────────────────────────────────────────
+          case 'GameConfigRequest':
+            callback.done(JSON.stringify({
+              classifier: 'GameConfigResponse',
+              mode: 'online_Real',
+              currency: 'USD'
+            }));
+            break;
+
+          // ── Regulations ─────────────────────────────────────────
+          case 'IGetRegulationsRequest':
+            callback.done('{"classifier":"ISuccess","regulation":"UK"}');
+            break;
+
+          // ── User Data ───────────────────────────────────────────
+          case 'IUserDataRequest':
+            var uname = 'Player';
+            try { uname = window.parent.sessionStorage.getItem('casinoUsername') || 'Player'; } catch(e) {}
+            callback.done(JSON.stringify({
+              classifier: 'IUserDataResponse',
+              username: uname,
+              currency: 'USD',
+              balanceCents: _casinoBalance
+            }));
+            break;
+
+          // ── Balance Sync: game → platform ───────────────────────
+          case 'ISetBalanceRequest':
+            if (typeof msg.amount === 'number') {
+              _casinoBalance = msg.amount;
+              try { window.parent.sessionStorage.setItem('casinoBalance', _casinoBalance); } catch(e) {}
+              _notifyParent('balanceUpdate', { balanceCents: _casinoBalance });
+            }
+            callback.done('{"classifier":"ISuccess"}');
+            break;
+
+          // ── Balance Change: bet / win ───────────────────────────
+          case 'ChangeBalanceRequest':
+            var change = _cents(msg.balanceChangeInCents);
+            _casinoBalance += change;
+            if (_casinoBalance < 0) _casinoBalance = 0;
+            try { window.parent.sessionStorage.setItem('casinoBalance', _casinoBalance); } catch(e) {}
+
+            if (change < 0) {
+              // Accumulate bets (player may place chips on multiple spots)
+              _pendingBetCents += Math.abs(change);
+              _notifyParent('betPlaced', { betCents: _pendingBetCents });
+            } else if (_pendingBetCents > 0) {
+              // Spin resolved — report result
+              _notifyParent('spinResult', {
+                betCents: _pendingBetCents,
+                winCents: change,
+                result: -1,
+                balanceCents: _casinoBalance
+              });
+              _pendingBetCents = 0;
+            }
+
+            _notifyParent('balanceUpdate', { balanceCents: _casinoBalance });
+            callback.done(JSON.stringify({ classifier: 'ISuccess', balanceCents: _casinoBalance }));
+            break;
+
+          default:
+            callback.done('{"classifier":"ISuccess"}');
+        }
+      }
+    };
+  </script>
+</head>
+<body style="background: #000; overflow: hidden; -ms-touch-action: none; touch-action: none; margin:0; padding:0; width:100vw; height:100vh;">
+  <script type="text/javascript">
+    document.write('<script type="text/javascript" src="resources/resources.nocache.js?v=' + new Date().getTime() + '"><\/script>');
+  </script>
+  <div id="automation"></div>
+</body>
+</html>
