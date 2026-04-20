@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Gates of Olympus 1000 — Casino</title>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@600&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --gold: #c9a84c;
+      --blue: #3b82f6;
+      --dark: #0a0a0f;
+      --bar-h: 52px;
+      --panel-w: 240px;
+    }
+    html, body { background: #000; overflow: hidden; width: 100%; height: 100%; font-family: 'Inter', sans-serif; }
+
+    /* TOP BAR */
+    #casino-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: var(--bar-h);
+      background: rgba(5,5,15,0.97);
+      border-bottom: 1px solid rgba(201,168,76,0.18);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; z-index: 9999; backdrop-filter: blur(8px);
+    }
+    .bar-logo { font-family: 'Playfair Display', serif; font-size: 0.95rem; color: var(--gold); white-space: nowrap; }
+    .bar-balance { text-align: center; }
+    .bar-balance-label { font-size: 0.55rem; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.12em; }
+    .bar-balance-amount { font-size: 1.15rem; font-weight: 700; color: #2ecc71; transition: color 0.3s; }
+    .bar-right { display: flex; align-items: center; gap: 8px; }
+    .bar-avatar { width: 28px; height: 28px; background: linear-gradient(135deg, var(--gold), #7a5018); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #000; flex-shrink: 0; }
+    .bar-username { font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+    .bar-logout { background: linear-gradient(135deg,#e63946,#c1121f); border: none; border-radius: 7px; color: #fff; font-size: 0.78rem; font-weight: 600; padding: 6px 14px; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.18s; box-shadow: 0 2px 8px rgba(230,57,70,0.45); letter-spacing: 0.02em; }
+    .bar-logout:hover { background: linear-gradient(135deg,#ff4d5e,#e63946); box-shadow: 0 4px 16px rgba(230,57,70,0.6); transform: translateY(-1px); }
+
+    /* SIDE PANEL */
+    #casino-panel {
+      position: fixed; top: var(--bar-h); right: 0; bottom: 0; width: var(--panel-w);
+      background: rgba(5,5,15,0.94); border-left: 1px solid rgba(201,168,76,0.1);
+      z-index: 9998; display: flex; flex-direction: column; overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+    .panel-sec { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .panel-label { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.22); margin-bottom: 8px; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .stat-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px; padding: 8px; }
+    .stat-box-label { font-size: 0.56rem; color: rgba(255,255,255,0.25); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+    .stat-box-val { font-size: 0.88rem; font-weight: 600; color: #fff; }
+    .stat-box-val.pos { color: #2ecc71; }
+    .stat-box-val.neg { color: #e74c3c; }
+    .history-wrap { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+    .history-label { padding: 10px 14px 4px; font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.12em; color: rgba(255,255,255,0.22); }
+    .history-scroll { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+    .history-scroll::-webkit-scrollbar { width: 3px; }
+    .history-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 2px; }
+    .h-empty { text-align: center; color: rgba(255,255,255,0.16); font-size: 0.76rem; padding: 18px 0; }
+    .h-row { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.04); border-radius: 6px; padding: 7px 9px; margin-bottom: 4px; display: flex; align-items: center; gap: 7px; animation: fadeSlide 0.22s ease; }
+    @keyframes fadeSlide { from { opacity:0; transform: translateY(-3px); } to { opacity:1; transform: translateY(0); } }
+    .h-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; background: rgba(100,50,150,0.25); border: 1px solid rgba(150,80,220,0.4); }
+    .h-info { flex: 1; min-width: 0; }
+    .h-amounts { display: flex; justify-content: space-between; }
+    .h-bet { font-size: 0.67rem; color: rgba(255,255,255,0.27); }
+    .h-net { font-size: 0.8rem; font-weight: 600; }
+    .h-net.pos { color: #2ecc71; }
+    .h-net.neg { color: #e74c3c; }
+    .h-net.zero { color: rgba(255,255,255,0.28); }
+    .h-time { font-size: 0.58rem; color: rgba(255,255,255,0.16); margin-top: 1px; }
+
+    /* WIN TOAST */
+    #win-toast {
+      position: fixed; top: 60px; left: 50%; transform: translateX(-50%) translateY(-12px);
+      background: linear-gradient(135deg, #7b2ff7, #c9a84c); color: #fff;
+      padding: 9px 22px; border-radius: 7px; font-weight: 700; font-size: 0.92rem;
+      opacity: 0; pointer-events: none; z-index: 99999; transition: all 0.28s;
+      box-shadow: 0 8px 28px rgba(123,47,247,0.45); font-family: 'Inter', sans-serif;
+    }
+    #win-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* GAME FRAME */
+    #game-frame {
+      position: fixed; top: var(--bar-h); left: 0; right: var(--panel-w); bottom: 0;
+      border: none; background: #000; width: auto; height: auto;
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 900px) {
+      #casino-panel { display: none; }
+      #game-frame { right: 0; }
+    }
+
+    /* Tablet */
+    @media (max-width: 768px) {
+      :root { --bar-h: 46px; --panel-w: 0px; }
+      .bar-logo { font-size: 0.82rem; }
+      .bar-balance-amount { font-size: 1rem; }
+      .bar-username { display: none; }
+    }
+
+    /* Telefon */
+    @media (max-width: 480px) {
+      :root { --bar-h: 42px; }
+      #casino-bar { padding: 0 10px; gap: 6px; }
+      .bar-logo { font-size: 0.75rem; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+      .bar-balance-label { display: none; }
+      .bar-balance-amount { font-size: 0.95rem; }
+      .bar-avatar { width: 24px; height: 24px; font-size: 10px; }
+      .bar-logout { font-size: 0.65rem; padding: 3px 7px; }
+    }
+
+    /* Çok küçük telefon (360px altı) */
+    @media (max-width: 360px) {
+      :root { --bar-h: 40px; }
+      .bar-logo { display: none; }
+    }
+
+    /* LOADING */
+    #loading-screen {
+      position: fixed; inset: 0; background: #050510;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 99998; transition: opacity 0.5s ease;
+    }
+    #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+    .loading-title { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--gold); margin-bottom: 8px; }
+    .loading-sub { font-size: 0.8rem; color: rgba(255,255,255,0.35); margin-bottom: 32px; }
+    .loading-bar-wrap { width: 240px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+    .loading-bar { height: 100%; background: linear-gradient(90deg, #7b2ff7, var(--gold)); border-radius: 3px; animation: loadSlide 1.8s ease-in-out infinite; }
+    @keyframes loadSlide { 0%{width:8%;margin-left:0} 50%{width:60%;margin-left:40%} 100%{width:8%;margin-left:0} }
+    .loading-pct { font-size: 0.85rem; color: rgba(255,255,255,0.70); margin-bottom: 6px; font-weight: 500; }
+    #loading-screen.fade-out { opacity: 0; pointer-events: none; }
+    #stuckBtn {
+      display: none; margin-top: 22px;
+      background: linear-gradient(135deg, #7b2ff7, #b06cf9);
+      color: #fff; border: none; border-radius: 8px;
+      padding: 12px 28px; font-size: 0.95rem; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 18px rgba(123,47,247,0.5);
+      transition: transform 0.15s;
+    }
+    #stuckBtn:hover { transform: scale(1.04); }
+    #stuckMsg { display: none; font-size: 0.75rem; color: #f5a623; margin-top: 10px; text-align: center; max-width: 260px; }
+  </style>
+
+  <script>
+    (function () {
+      // ── URL param veya sessionStorage'dan oturumu al ───────────
+      var _p = new URLSearchParams(window.location.search);
+      if (_p.get('token') && _p.get('user')) {
+        sessionStorage.setItem('casinoToken',    _p.get('token'));
+        sessionStorage.setItem('casinoUsername', _p.get('user'));
+        if (_p.get('balance')) sessionStorage.setItem('casinoBalance', _p.get('balance'));
+        if (_p.get('uid'))     sessionStorage.setItem('casinoUid', _p.get('uid'));
+      }
+      if (_p.get('return')) sessionStorage.setItem('casinoReturn', _p.get('return'));
+      // Readdy'den gelen RTP parametresi varsa sunucuya kaydet
+      if (_p.get('rtp') && _p.get('token')) {
+        fetch('/api/casino/setSessionRtp?token=' + encodeURIComponent(_p.get('token')) + '&rtp=' + encodeURIComponent(_p.get('rtp'))).catch(function(){});
+      }
+      // Readdy'den gelen Supabase UUID varsa sunucuya bağla (eşleştirme için)
+      var _uidParam = _p.get('uid') || sessionStorage.getItem('casinoUid');
+      var _tokParam = _p.get('token') || sessionStorage.getItem('casinoToken');
+      if (_uidParam && _tokParam) {
+        fetch('/api/casino/setUid?token=' + encodeURIComponent(_tokParam) + '&uid=' + encodeURIComponent(_uidParam)).catch(function(){});
+      }
+
+      var _token    = sessionStorage.getItem('casinoToken');
+      var _username = sessionStorage.getItem('casinoUsername');
+      var _balance  = parseInt(sessionStorage.getItem('casinoBalance') || '100000', 10);
+
+      if (!_token || !_username) {
+        document.addEventListener('DOMContentLoaded', function() {
+          document.body.innerHTML = '<div style="position:fixed;inset:0;background:#050510;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#fff;text-align:center;"><div><div style="font-size:1.3rem;color:#c9a84c;margin-bottom:12px">Erişim Engellendi</div><div style="font-size:0.9rem;color:rgba(255,255,255,.4)">Bu oyuna Readdy üzerinden giriş yapın.</div></div></div>';
+        });
+        return;
+      }
+
+      // DOM hazır olunca oyunu başlat — <head> içinde game-frame henüz yok
+      document.addEventListener('DOMContentLoaded', _startGame);
+      fetch('/api/casino/session/init', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: _token, username: _username, uid: sessionStorage.getItem('casinoUid') || null })
+      })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+          if (d && d.ok && typeof d.balanceCents === 'number') {
+            _balance = d.balanceCents;
+            sessionStorage.setItem('casinoBalance', _balance);
+            if (window._casinoUpdateBalance) window._casinoUpdateBalance(d.balanceCents);
+          }
+        }).catch(function() {
+          fetch('/api/casino/player', { headers: { 'x-casino-token': _token } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+              if (d && typeof d.balanceCents === 'number') {
+                _balance = d.balanceCents; sessionStorage.setItem('casinoBalance', _balance);
+                if (window._casinoUpdateBalance) window._casinoUpdateBalance(d.balanceCents);
+              }
+            }).catch(function() {});
+        });
+
+      var _prevBalance  = _balance;
+      var _pendingBet   = 0;
+      var _spinActive   = false;
+      var _gameReady    = false;
+
+      function _dollars(cents) { return (cents / 100).toFixed(2); }
+      function _cents(dollars) { return Math.round(parseFloat(dollars) * 100); }
+
+      function _syncBalance(b) {
+        _balance = b;
+        sessionStorage.setItem('casinoBalance', b);
+        if (window._casinoUpdateBalance) window._casinoUpdateBalance(b);
+      }
+
+      // ── Pragmatic Play Adapter ────────────────────────────────
+      // Oyun bu fonksiyonu çağırır: window.parent.sendToAdapter(...)
+      var _host = window.location.protocol + '//' + window.location.host;
+      var _datapath = _host + '/games/GatesofOlympus1000/gs2c/common/v1/games-html5/games/vs/vs20olympx/';
+
+      window.sendToAdapter = function(rawData) {
+        var data;
+        try { data = (typeof rawData === 'string') ? JSON.parse(rawData) : rawData; }
+        catch(e) { return; }
+
+        var evt = data.common || data.type || '';
+        var evKey = data.event || '';
+
+
+        // ── Konfigürasyon isteği ──────────────────────────────────
+        if (evt === 'EVT_GET_CONFIGURATION') {
+          var gameConfig = {
+            datapath:             _datapath,
+            datapath_alternative: _datapath,
+            currency:             'TRY',
+            currencyOriginal:     'TRY',
+            balance:              _dollars(_balance),
+            lang:                 'en',
+            jurisdiction:         '99',
+            demoMode:             '0',
+            showRealCash:         '1',
+            accountType:          'R',
+            styleName:            'generic',
+            extend_events:        '1',
+            region:               'Other',
+            vendor:               'T',
+            clock:                '0',
+            minimode:             '0',
+            lobbyLaunched:        true,
+            hideLobbyButton:      true,
+            showLobbyButton:      false,
+            LOGOUT:               '/gs2c/logout.do',
+            CLOSE_GAME:           '/gs2c/closeGame.do?symbol=vs20olympx',
+            SETTINGS:             '/gs2c/saveSettings.do',
+            RELOAD_BALANCE:       '/gs2c/reloadBalance.do',
+            RELOAD_JACKPOT:       '/gs2c/jackpot/reload.do',
+            REGULATION:           _host + '/gs2c/regulation/process.do?symbol=vs20olympx',
+            gameService:          _host + '/games/GatesofOlympus1000/gs2c/ge/v3/gameService',
+            statisticsURL:        _host + '/games/GatesofOlympus1000/gs2c/stats.do',
+            mgckey:               'stylename@generic~SESSION@' + _token,
+            MAGIC_KEY:            'stylename@generic~SESSION@' + _token,
+            GAMESERVICE:          '/gs2c/gameService',
+            sessionKeyV2:         [
+              'bqFHWEhzYx11RLYgN3qYwbfs9vR+XT+xAYrC8rZGbOxQyhnVqhUyNYTj2BEfokoRBTTPMonyEvdUy9BRTO5PU0ILEXMszMXanXf8GvLFHxC7Kt2nWEMtU/+DyIsan9aeUPl4xdpnUJ3UN/g3/a1rjRD9O9Eg0q3Z5bLgM5IHNfc=',
+              'j9danEDefQMXipux0E1manlKKb/wFy7keWozS8bxmUJkk07zEt4RvfcgA+Mk7ppXB++AOwcGr/hJFY2uPY+NcEi+28I3ehvZLMNrJ/FVzwRACAph3et5tJzTYyQKdX+NQz9CcY4HlbKqhnv5g/THgwgLJr1vKr5vIdJqHgA7Z/s='
+            ],
+          };
+
+          _sendToGame(JSON.stringify({
+            common: 'EVT_GET_CONFIGURATION',
+            args: { config: gameConfig }
+          }));
+
+          _gameReady = true;
+
+          // ── /api/game-ready polling ───────────────────────────
+          // Oyun /gs2c/reloadBalance.do'yu çağırdığında sunucu token'ı işaretler.
+          // Bu polling SADECE oyunun başladığını doğrular — loading screen'i KAPATMAZ.
+          // Loading screen yalnızca EVT_GAME_LOAD_COMPLITED veya 180s fallback'te kapanır.
+          // Hard reload fonksiyonu — cache'i temizleyerek sayfayı yeniden yükler
+          window._hardReload = function() {
+            var btn = document.getElementById('stuckBtn');
+            var msg = document.getElementById('stuckMsg');
+            if (btn) btn.style.display = 'none';
+            if (msg) msg.style.display = 'block';
+            // sessionStorage'daki token/user bilgilerini koru, cache'i temizle
+            setTimeout(function() {
+              // Hard reload: tarayıcı tüm kaynakları yeniden indirir
+              window.location.reload(true);
+            }, 600);
+          };
+
+          // Loading timer + stuck detection
+          var _loadStart      = Date.now();
+          var _lastPctValue   = -1;   // son bilinen progress %
+          var _lastPctChange  = Date.now(); // son progress değişikliği zamanı
+          var _stuckShown     = false;
+          var _loadTimerEl    = document.getElementById('loadTimer');
+          window._loadTimerInterval = setInterval(function() {
+            var elapsed = Math.round((Date.now() - _loadStart) / 1000);
+            if (_loadTimerEl) _loadTimerEl.textContent = elapsed + ' saniye geçti';
+
+            // Gerçek loadingProgress gelmezse tahmini bar göster
+            var bar   = document.getElementById('loadProgressBar');
+            var pctEl = document.getElementById('loadingPct');
+            var curPct = bar ? parseFloat(bar.style.width) : 0;
+
+            if (curPct < 1) {
+              // Hiç gerçek progress gelmediyse tahmini göster
+              var est = Math.min(95, Math.round((elapsed / 90) * 100));
+              if (bar) bar.style.width = est + '%';
+              curPct = est;
+            }
+
+            // Metin güncellemesi — gerçek progress yoksa
+            if (pctEl && !window._progressLogCount) {
+              if      (elapsed < 5)  pctEl.textContent = 'Motor başlatılıyor...';
+              else if (elapsed < 20) pctEl.textContent = 'Oyun dosyaları yükleniyor...';
+              else if (elapsed < 50) pctEl.textContent = 'Grafikler hazırlanıyor...';
+              else                   pctEl.textContent = 'Neredeyse hazır...';
+            }
+
+            // ── STUCK DETECTION ─────────────────────────────────────────
+            // Eğer progress değiştiyse son değişim zamanını güncelle
+            if (Math.round(curPct) !== Math.round(_lastPctValue)) {
+              _lastPctValue  = curPct;
+              _lastPctChange = Date.now();
+            }
+            var stuckSec = Math.round((Date.now() - _lastPctChange) / 1000);
+            // 45 saniyedir progress değişmediyse VE %95 altındaysa "Yeniden Yükle" butonu göster
+            if (!_stuckShown && stuckSec >= 45 && curPct < 95) {
+              _stuckShown = true;
+              var btn = document.getElementById('stuckBtn');
+              if (btn) btn.style.display = 'inline-block';
+            }
+          }, 1000);
+
+          // Fallback: 180 saniye (oyun çok büyük, ilk yüklemede uzun sürebilir).
+          // EVT_GAME_LOAD_COMPLITED gelmezse 180s'de kapanır.
+          if (!window._loadFallback) {
+            window._loadFallback = setTimeout(function() { _hideLoadingScreen(); }, 180000);
+          }
+          return;
+        }
+
+        // ── Bakiye yenileme ───────────────────────────────────────
+        // NOT: Bu event oyun yüklenirken de gelebilir, loading screen'i KAPATMA.
+        // Loading screen yalnızca EVT_GAME_LOAD_COMPLITED veya 180s fallback'te kapanır.
+        if (evt === 'EVT_GET_BALANCE' || evt === 'EVT_RELOAD_BALANCE') {
+          // PP adapter protokolü: common=EVT_RELOAD_BALANCE ile yanıtla
+          _sendToGame(JSON.stringify({
+            common: 'EVT_RELOAD_BALANCE',
+            args: { balance: _dollars(_balance), currency: 'TRY' }
+          }));
+          return;
+        }
+
+        var evtName = data.event || '';
+
+        // ── Oyun GERÇEKten hazır — loading screen'i kapat ─────────
+        // NOT: "loaded" eventi sadece JS motoru hazır demek, grafikler değil.
+        //      Sadece aşağıdaki GERÇEK hazır eventlerde loading screen'i kapat.
+        // "COMPLITED" typo PP oyununda bilerek var (PP'nin kendi yazımı)
+        // Yalnızca oyun GERÇEKten tam yüklendiğinde loading screen kapat
+        // EVT_GAME_STATUS erken gelebilir — listede YOK
+        if (evtName === 'gameLoaded' || evtName === 'gameLoadingFinished' || evtName === 'gameNotBusy' ||
+            evt === 'EVT_GAME_LOAD_COMPLITED') {
+          window._gameFullyLoaded = true;
+          // Loading timer interval'ı durdur — oyun oynanırken JS thread'i gereksiz meşgul etmesin
+          if (window._loadTimerInterval) {
+            clearInterval(window._loadTimerInterval);
+            window._loadTimerInterval = null;
+          }
+          if (window._loadFallback) {
+            clearTimeout(window._loadFallback);
+            window._loadFallback = null;
+          }
+          _hideLoadingScreen();
+          return;
+        }
+
+        // ── "loaded" = sadece JS motoru hazır, timer'ı hızlandır ─
+        // Loading screen'i KAPATMA — grafikler henüz hazır değil.
+        if (evtName === 'loaded' || evt === 'loaded') {
+          // Fallback süresini 90 saniyeye indir (JS motoru yüklendi, grafikler geliyor)
+          if (window._loadFallback) { clearTimeout(window._loadFallback); }
+          window._loadFallback = setTimeout(function() { _hideLoadingScreen(); }, 90000);
+          var pctEl2 = document.getElementById('loadingPct');
+          if (pctEl2) pctEl2.textContent = 'Grafikler yükleniyor...';
+          return;
+        }
+
+        // ── loadingProgress: oyunun gerçek yükleme ilerlemesi ────
+        if (evtName === 'loadingProgress' || evt === 'loadingProgress') {
+          // PP oyunu progress'i 0-1 (kesirli) veya 0-100 (tam sayı) gönderebilir
+          var rawPct = data.progress !== undefined ? data.progress :
+                       data.percent  !== undefined ? data.percent  :
+                       data.loaded   !== undefined ? data.loaded   : 0;
+          var pct = rawPct > 1 ? rawPct : rawPct * 100; // normalize to 0-100
+          var pctEl = document.getElementById('loadingPct');
+
+          if (pct > 0 && pctEl) {
+            pctEl.textContent = 'Yükleniyor: ' + Math.round(pct) + '%';
+            var bar = document.getElementById('loadProgressBar');
+            if (bar) bar.style.width = Math.min(100, Math.round(pct)) + '%';
+            // Stuck detection: gerçek progress geldiğinde timer'ı sıfırla
+            if (typeof _lastPctChange !== 'undefined') {
+              _lastPctChange = Date.now();
+            }
+          }
+
+          // %99+ ise oyun görsel olarak hazır — loading screen'i kapat
+          if (pct >= 99) {
+            setTimeout(function() { _hideLoadingScreen(); }, 800);
+          }
+          return;
+        }
+
+        // ── Oyun durdu / duraklama → devam ettir ─────────────────
+        if (evt === 'EVT_GAME_PAUSED' || evtName === 'gamePaused') {
+          _sendToGame(JSON.stringify({ common: 'EVT_RESUME_GAME', args: {} }));
+          return;
+        }
+
+        // ── Kapan ─────────────────────────────────────────────────
+        if (evt === 'EVT_CLOSE' || evt === 'CloseGame' || evt === 'EVT_LOBBY') {
+          var _ret = sessionStorage.getItem('casinoReturn') || null;
+          if (_ret) { window.location.href = _ret; } else { history.back(); }
+          return;
+        }
+
+        // ── Bakiye değişimi (bahis veya kazanç) ───────────────────
+        var balField = data.balance !== undefined ? data.balance :
+                       data.currentBalance !== undefined ? data.currentBalance :
+                       data.newBalance !== undefined ? data.newBalance : null;
+
+        if (balField !== null) {
+          var newBal = _cents(balField);
+          var diff   = newBal - _prevBalance;
+
+          if (Math.abs(diff) < 1) return; // hiç değişmedi
+
+          if (diff < 0) {
+            // BAHİS
+            var betAmt = Math.abs(diff);
+            _pendingBet += betAmt;
+            _prevBalance = newBal;
+            fetch('/api/casino/bet', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-casino-token': _token },
+              body: JSON.stringify({ betCents: betAmt })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) { _syncBalance(typeof d.balanceCents === 'number' ? d.balanceCents : newBal); })
+            .catch(function() { _syncBalance(newBal); });
+
+          } else if (diff > 0) {
+            // KAZANÇ
+            var winAmt      = diff;
+            var betToReport = _pendingBet > 0 ? _pendingBet : winAmt;
+            _pendingBet = 0;
+            _prevBalance = newBal;
+            fetch('/api/casino/win', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-casino-token': _token },
+              body: JSON.stringify({ winCents: winAmt, betCents: betToReport })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+              if (typeof d.balanceCents === 'number') {
+                _syncBalance(d.balanceCents);
+                if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, d.appliedWinCents || winAmt);
+              } else {
+                _syncBalance(newBal);
+                if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, winAmt);
+              }
+            })
+            .catch(function() {
+              _syncBalance(newBal);
+              if (window._casinoRecordSpin) window._casinoRecordSpin(betToReport, winAmt);
+            });
+          }
+        }
+      };
+
+      function _sendToGame(strData) {
+        var frame = document.getElementById('game-frame');
+        if (!frame || !frame.contentWindow) return;
+        try {
+          if (typeof frame.contentWindow.sendToGame === 'function') {
+            frame.contentWindow.sendToGame(strData);
+          } else {
+            frame.contentWindow.postMessage(strData, '*');
+          }
+        } catch(e) {
+          try { frame.contentWindow.postMessage(strData, '*'); } catch(e2) {}
+        }
+      }
+
+      // ── Loading screen ────────────────────────────────────────
+      var _loadingHidden = false;
+      var _balPollInterval = null;
+      function _startBalancePoll() {
+        if (_balPollInterval) return;
+        _balPollInterval = setInterval(function() {
+          fetch('/api/casino/player', { headers: { 'x-casino-token': _token } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(d) {
+              if (d && typeof d.balanceCents === 'number' && d.balanceCents !== _balance) {
+                _balance = d.balanceCents;
+                sessionStorage.setItem('casinoBalance', _balance);
+                if (window._casinoUpdateBalance) window._casinoUpdateBalance(_balance);
+              }
+            }).catch(function() {});
+        }, 3000);
+      }
+
+      function _hideLoadingScreen() {
+        if (_loadingHidden) return;
+        _loadingHidden = true;
+        window._pollingStopped = true;
+        if (window._loadFallback) { clearTimeout(window._loadFallback); window._loadFallback = null; }
+        if (window._loadTimerInterval) { clearInterval(window._loadTimerInterval); window._loadTimerInterval = null; }
+        _startBalancePoll();
+        var ls = document.getElementById('loading-screen');
+        if (!ls) return;
+        ls.classList.add('fade-out');
+        setTimeout(function() { ls.style.display = 'none'; }, 550);
+      }
+
+
+      // postMessage fallback (bazı Pragmatic Play sürümleri postMessage kullanır)
+      window.addEventListener('message', function(e) {
+        if (!e.data) return;
+        var data;
+        try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch(ex) { return; }
+        if (data && (data.common || data.type || data.event)) window.sendToAdapter(data);
+      });
+
+      function _startGame() {
+        _prevBalance = _balance;
+        if (window._casinoUpdateBalance) window._casinoUpdateBalance(_balance);
+
+        var frame = document.getElementById('game-frame');
+        if (frame) {
+          // iframe'e src vermeden önce kesin piksel boyutlarını hesaplayıp ata
+          // — game engine ilk okuduğunda 300x150 yerine doğru viewport değerlerini görsün
+          var cs = getComputedStyle(document.documentElement);
+          var barH   = parseFloat(cs.getPropertyValue('--bar-h'))   || 52;
+          var panelW = parseFloat(cs.getPropertyValue('--panel-w')) || 240;
+          var isNarrow = window.innerWidth <= 900;
+          var fw = window.innerWidth - (isNarrow ? 0 : panelW);
+          var fh = window.innerHeight - barH;
+          frame.style.width  = fw + 'px';
+          frame.style.height = fh + 'px';
+          frame.style.right  = 'auto';
+          frame.style.bottom = 'auto';
+
+          frame.src = '/games/GatesofOlympus1000/gs2c/html5Game.html?cur=TRY&token=' + encodeURIComponent(_token);
+
+          // iframe yüklendikten sonra resize tetikle — game engine scale'i yeniden hesaplar
+          // NOT: Oyun oynanırken resize atmak ekranda titreme yaratır!
+          // Yalnızca başlangıçta gerekli: 300ms (ilk render) ve 1200ms (WebGL hazır)
+          window._gameFullyLoaded = false;
+          frame.onload = function() {
+            [300, 1200].forEach(function(d) {
+              setTimeout(function() {
+                if (!window._gameFullyLoaded) {
+                  try { frame.contentWindow.dispatchEvent(new Event('resize')); } catch(e) {}
+                }
+              }, d);
+            });
+
+            // Web Audio API kilidini açmak için erken kullanıcı etkileşimi dinle
+            // İlk tıklamada iframe'e audio unlock mesajı gönder
+            var _audioUnlocked = false;
+            document.addEventListener('click', function _unlockAudio() {
+              if (_audioUnlocked) return;
+              _audioUnlocked = true;
+              document.removeEventListener('click', _unlockAudio);
+              try {
+                // Web Audio context'i aktive et
+                var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                  var ctx = new AudioCtx();
+                  var buf = ctx.createBuffer(1, 1, 22050);
+                  var src = ctx.createBufferSource();
+                  src.buffer = buf;
+                  src.connect(ctx.destination);
+                  src.start(0);
+                  setTimeout(function() { try { ctx.close(); } catch(e) {} }, 100);
+                }
+              } catch(e) {}
+            }, { once: false });
+          };
+
+          // Pencere boyutu değişirse iframe'i de güncelle — debounce ile titreme önle
+          var _resizeTimer = null;
+          window.addEventListener('resize', function() {
+            clearTimeout(_resizeTimer);
+            _resizeTimer = setTimeout(function() {
+              var cs2 = getComputedStyle(document.documentElement);
+              var bh2 = parseFloat(cs2.getPropertyValue('--bar-h')) || 52;
+              var pw2 = parseFloat(cs2.getPropertyValue('--panel-w')) || 240;
+              var narrow = window.innerWidth <= 900;
+              frame.style.width  = (window.innerWidth - (narrow ? 0 : pw2)) + 'px';
+              frame.style.height = (window.innerHeight - bh2) + 'px';
+              try { frame.contentWindow.dispatchEvent(new Event('resize')); } catch(e) {}
+            }, 150); // 150ms debounce — pencere boyutu değişirken çok fazla event atmaz
+          });
+        }
+      }
+
+      // ── UI Callbacks ─────────────────────────────────────────
+      window._goToken    = _token;
+      window._goUsername = _username;
+      window._goBalance  = _balance;
+    })();
+  </script>
+  <script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(function(){});}</script>
+</head>
+<body>
+
+  <!-- STALE CACHE REFRESH BANNER (shown if old build.js detected) -->
+  <div id="refresh-banner" style="display:none;position:fixed;top:52px;left:0;right:0;z-index:99999;background:#b71c1c;color:#fff;padding:10px 20px;font-size:0.85rem;align-items:center;justify-content:center;gap:14px;font-family:sans-serif;">
+    <span>⚠️ Eski sürüm algılandı. Oyunun düzgün çalışması için sayfayı yenileyin:</span>
+    <button onclick="location.reload(true)" style="background:#fff;color:#b71c1c;border:none;padding:6px 16px;border-radius:4px;font-weight:700;cursor:pointer;font-size:0.85rem;">Sayfayı Yenile</button>
+  </div>
+
+  <!-- LOADING SCREEN -->
+  <div id="loading-screen">
+    <div class="loading-title">Gates of Olympus 1000</div>
+    <div class="loading-sub">Pragmatic Play</div>
+    <div style="width:300px;background:rgba(255,255,255,0.1);border-radius:8px;height:8px;margin:0 auto 12px;overflow:hidden;">
+      <div id="loadProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#7b2ff7,#f5a623);border-radius:8px;transition:width 0.5s ease;"></div>
+    </div>
+    <div class="loading-pct" id="loadingPct">Oyun yükleniyor...</div>
+    <div id="loadTimer" style="font-size:0.68rem;color:rgba(255,255,255,0.28);margin-top:4px;"></div>
+    <div style="font-size:0.65rem;color:rgba(255,255,255,0.20);margin-top:14px;text-align:center;line-height:1.5;">
+      İlk açılışta 30–90 saniye sürebilir.<br>Sonraki açılışlar çok daha hızlı olur.
+    </div>
+    <button id="stuckBtn" onclick="window._hardReload()">🔄 Yeniden Yükle</button>
+    <div id="stuckMsg">Tarayıcı önbelleği temizleniyor ve oyun yeniden başlatılıyor...</div>
+  </div>
+
+  <!-- TOP BAR -->
+  <div id="casino-bar">
+    <div class="bar-logo">⚡ Gates of Olympus 1000</div>
+    <div class="bar-balance">
+      <div class="bar-balance-label">Bakiye</div>
+      <div class="bar-balance-amount" id="barBalance">0,00 ₺</div>
+    </div>
+    <div class="bar-right">
+      <div class="bar-avatar" id="barAvatar">?</div>
+      <div class="bar-username" id="barUsername">...</div>
+      <button class="bar-logout" onclick="casinoLogout()">Çıkış</button>
+    </div>
+  </div>
+
+  <!-- SIDE PANEL -->
+  <div id="casino-panel">
+    <div class="panel-sec">
+      <div class="panel-label">Oturum</div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-box-label">Turlar</div><div class="stat-box-val" id="stSpins">0</div></div>
+        <div class="stat-box"><div class="stat-box-label">Kazanılan</div><div class="stat-box-val" id="stWins">0</div></div>
+        <div class="stat-box"><div class="stat-box-label">Bahis</div><div class="stat-box-val" id="stBet">0 ₺</div></div>
+        <div class="stat-box"><div class="stat-box-label">Kâr/Zarar</div><div class="stat-box-val" id="stNet">0 ₺</div></div>
+      </div>
+    </div>
+    <div class="history-wrap">
+      <div class="history-label">Tur Geçmişi</div>
+      <div class="history-scroll" id="histList"><div class="h-empty">Henüz tur yok</div></div>
+    </div>
+  </div>
+
+  <!-- GAME FRAME -->
+  <iframe id="game-frame" src="about:blank" allow="autoplay; fullscreen; clipboard-write; gyroscope"></iframe>
+
+  <div id="win-toast"></div>
+
+  <!-- UI LOGIC -->
+  <script>
+    var _stats   = { spins: 0, wins: 0, betCents: 0, netCents: 0 };
+    var _history = [];
+    var _username = window._goUsername || sessionStorage.getItem('casinoUsername') || '';
+    var _token    = window._goToken    || sessionStorage.getItem('casinoToken') || '';
+
+    document.getElementById('barUsername').textContent = _username;
+    document.getElementById('barAvatar').textContent = _username.charAt(0).toUpperCase() || '?';
+
+    function fmt(c) {
+      var abs = Math.abs(c) / 100;
+      var formatted = abs.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return (c < 0 ? '-' : '') + formatted + ' ₺';
+    }
+
+    function casinoLogout() {
+      var t = sessionStorage.getItem('casinoToken');
+      var ret = sessionStorage.getItem('casinoReturn') || null;
+      sessionStorage.clear();
+      if (t) fetch('/api/casino/logout', { method: 'POST', headers: { 'x-casino-token': t } }).catch(function(){});
+      if (ret) { window.location.href = ret; } else { history.back(); }
+    }
+
+    window._casinoUpdateBalance = function(balanceCents) {
+      document.getElementById('barBalance').textContent = fmt(balanceCents);
+    };
+
+    window._casinoRecordSpin = function(betCents, winCents) {
+      var net = winCents - betCents;
+      _stats.spins++;
+      _stats.betCents  += betCents;
+      _stats.netCents  += net;
+      if (winCents > betCents) _stats.wins++;
+
+      _history.unshift({ bet: betCents, win: winCents, net: net, ts: Date.now() });
+      if (_history.length > 30) _history.pop();
+
+      document.getElementById('stSpins').textContent = _stats.spins;
+      document.getElementById('stWins').textContent  = _stats.wins;
+      document.getElementById('stBet').textContent   = fmt(_stats.betCents);
+      var netEl = document.getElementById('stNet');
+      netEl.textContent = (_stats.netCents >= 0 ? '+' : '') + fmt(_stats.netCents);
+      netEl.className = 'stat-box-val ' + (_stats.netCents > 0 ? 'pos' : _stats.netCents < 0 ? 'neg' : '');
+
+      var list = document.getElementById('histList');
+      list.innerHTML = _history.map(function(r) {
+        var nc = r.net > 0 ? 'pos' : r.net < 0 ? 'neg' : 'zero';
+        var ns = (r.net > 0 ? '+' : '') + fmt(r.net);
+        var t  = new Date(r.ts).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return '<div class="h-row">'
+          + '<div class="h-icon">⚡</div>'
+          + '<div class="h-info">'
+          + '<div class="h-amounts"><span class="h-bet">Bahis: ' + fmt(r.bet) + '</span>'
+          + '<span class="h-net ' + nc + '">' + ns + '</span></div>'
+          + '<div class="h-time">' + t + '</div>'
+          + '</div></div>';
+      }).join('');
+
+      if (net > 0) {
+        var toast = document.getElementById('win-toast');
+        toast.textContent = '⚡ Kazandınız! +' + fmt(net);
+        toast.classList.add('show');
+        setTimeout(function() { toast.classList.remove('show'); }, 3000);
+      }
+    };
+
+    // İlk bakiye göster
+    window._casinoUpdateBalance(parseInt(sessionStorage.getItem('casinoBalance') || '100000', 10));
+
+    // Tab arka plan uyarısı — yükleme sırasında göster
+    (function(){
+      var warn = document.getElementById('loading-bg-warn');
+      var ls   = document.getElementById('loading-screen');
+      document.addEventListener('visibilitychange', function(){
+        if (!warn || !ls || ls.style.display === 'none') return;
+        if (document.visibilityState === 'hidden') {
+          warn.style.display = 'block';
+        } else {
+          warn.style.display = 'none';
+        }
+      });
+    })();
+  </script>
+
+</body>
+</html>
