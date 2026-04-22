@@ -42917,6 +42917,18 @@ app.get("/debug-log", (req, res) => {
   const nonImport = _debugLogs.filter((l) => l.type !== "ImportStep");
   res.json({ count: _debugLogs.length, logs: filtered.slice(-100), nonImport: nonImport.slice(-50) });
 });
+app.get("/gs-debug", (_req, res) => {
+  const checks = _gsSrcPaths.map((p) => ({ path: p, exists: fs.existsSync(p) }));
+  res.json({
+    ppDest: _ppDest,
+    wgDest: _wgDest,
+    publicDir,
+    templateLoaded: !!_gsTemplate,
+    templateLength: _gsTemplate.length,
+    srcPaths: checks,
+    gsSrcPaths: _gsSrcPaths
+  });
+});
 var ARCHIVE_KEY = "5bb03df7c6cc70fe23214a7ddf81ce3e";
 app.get("/games-archive", (req, res) => {
   const key = req.query.key;
