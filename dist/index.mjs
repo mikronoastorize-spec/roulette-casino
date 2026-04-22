@@ -41152,6 +41152,30 @@ router5.post("/session", async (req, res) => {
     res.status(500).json({ error: "Sunucu hatas\u0131" });
   }
 });
+router5.get("/session/:token/balance", async (req, res) => {
+  try {
+    const { token } = req.params;
+    const row = await queryOne(
+      `SELECT p.balance_cents, p.username
+       FROM player_sessions ps
+       JOIN players p ON p.id = ps.player_id
+       WHERE ps.session_token = $1 AND ps.expires_at > NOW()`,
+      [token]
+    );
+    if (!row) {
+      res.status(404).json({ error: "Oturum bulunamad\u0131" });
+      return;
+    }
+    res.json({
+      token,
+      username: row.username,
+      balanceCents: row.balance_cents,
+      balance_tl: row.balance_cents / 100
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Sunucu hatas\u0131" });
+  }
+});
 router5.get("/balance/:username", async (req, res) => {
   if (!kingbetAuth(req, res)) return;
   try {
@@ -41395,43 +41419,138 @@ app.use("/api/casino", casino_default);
 app.use("/api/admin", admin_default);
 app.use("/api/kingbet", kingbet_default);
 var publicDir = path.resolve(__dirname2, "../public");
-var _ppTar = path.resolve(__dirname2, "./games-pp.tar.gz");
-var _ppDest = "/tmp/games";
-var _ppSentinel = path.join(_ppDest, "GatesofOlympus1000", "gs2c");
-if (!fs.existsSync(_ppSentinel) && fs.existsSync(_ppTar)) {
-  fs.mkdirSync(_ppDest, { recursive: true });
+var _publicGamesDir = path.resolve(publicDir, "games");
+var _VOLUME_PATH = "/data/games";
+var _APP_GAMES = "/app/games";
+function _isWritableDir(p) {
+  try {
+    fs.accessSync(p, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+var _gamesDest = (() => {
+  if (fs.existsSync(path.join(_publicGamesDir, "GatesofOlympus1000", "gs2c")))
+    return _publicGamesDir;
+  if (fs.existsSync(_VOLUME_PATH) && _isWritableDir(_VOLUME_PATH)) {
+    logger.info("[games] Railway volume detected at " + _VOLUME_PATH);
+    return _VOLUME_PATH;
+  }
+  return _APP_GAMES;
+})();
+var _ppDest = _gamesDest;
+var _wgDest = _gamesDest;
+logger.info({ dest: _gamesDest }, "[games] storage destination selected");
+function _extractTar(tarPath, destDir, label, onDone) {
   const { exec } = __require("child_process");
-  exec(`tar -xzf "${_ppTar}" -C "${_ppDest}"`, (err) => {
-    if (err) logger.error({ err }, "[PP games] async extraction failed");
-    else logger.info("[PP games] async extraction complete \u2192 " + _ppDest);
+  fs.mkdirSync(destDir, { recursive: true });
+  exec(`tar -xzf "${tarPath}" -C "${destDir}"`, (err) => {
+    if (err) logger.error({ err }, `[${label}] extraction failed`);
+    else {
+      logger.info(`[${label}] extraction complete \u2192 ${destDir}`);
+      onDone?.();
+    }
   });
-  logger.info("[PP games] extraction started in background \u2192 " + _ppDest);
-} else if (fs.existsSync(_ppSentinel)) {
-  logger.info("[PP games] already extracted at " + _ppDest);
+  logger.info(`[${label}] extraction started in background \u2192 ${destDir}`);
+}
+async function _downloadAndExtract(url, destDir, label) {
+  const tmpFile = `/tmp/_dl_${label.replace(/\W/g, "_")}.tar.gz`;
+  logger.info({ url, tmpFile }, `[${label}] downloading archive\u2026`);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      logger.error({ status: res.status }, `[${label}] download failed`);
+      return;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    fs.writeFileSync(tmpFile, buf);
+    logger.info({ bytes: buf.length }, `[${label}] download complete, extracting\u2026`);
+    _extractTar(tmpFile, destDir, label, () => {
+      try {
+        fs.unlinkSync(tmpFile);
+      } catch {
+      }
+    });
+  } catch (err) {
+    logger.error({ err }, `[${label}] download error`);
+  }
+}
+var _ppTar = path.resolve(__dirname2, "./games-pp.tar.gz");
+var _ppSentinel = path.join(_ppDest, "GatesofOlympus1000", "gs2c");
+if (!fs.existsSync(_ppSentinel)) {
+  if (fs.existsSync(_ppTar)) {
+    _extractTar(_ppTar, _ppDest, "PP games");
+  } else {
+    logger.warn("[PP games] tar.gz not found at " + _ppTar);
+  }
 } else {
-  logger.warn("[PP games] tar.gz not found at " + _ppTar);
+  logger.info("[PP games] already extracted at " + _ppDest);
 }
 var _wgTar = path.resolve(__dirname2, "./wg-game.tar.gz");
-var _wgDest = "/tmp/games";
 var _wgDir = path.join(_wgDest, "WolfGold");
 var _wgSentinel = path.join(_wgDir, "gs2c", "html5Game.html");
 var _wgReady = fs.existsSync(_wgSentinel);
-if (!_wgReady && fs.existsSync(_wgTar)) {
-  fs.mkdirSync(_wgDir, { recursive: true });
-  const { exec } = __require("child_process");
-  exec(`tar -xzf "${_wgTar}" -C "${_wgDir}"`, (err) => {
-    if (err) {
-      logger.error({ err }, "[WolfGold] async extraction failed");
-    } else {
+if (!_wgReady) {
+  if (fs.existsSync(_wgTar)) {
+    _extractTar(_wgTar, _wgDest, "WolfGold", () => {
       _wgReady = true;
-      logger.info("[WolfGold] async extraction complete \u2192 " + _wgDir);
-    }
-  });
-  logger.info("[WolfGold] extraction started in background \u2192 " + _wgDir);
-} else if (_wgReady) {
-  logger.info("[WolfGold] already extracted at " + _wgDir);
+    });
+  } else {
+    logger.warn("[WolfGold] tar.gz not found at " + _wgTar);
+  }
 } else {
-  logger.warn("[WolfGold] tar.gz not found at " + _wgTar);
+  logger.info("[WolfGold] already extracted at " + _wgDir);
+}
+var _extraArchivesEnv = process.env["EXTRA_GAME_ARCHIVES"] || "";
+if (_extraArchivesEnv.trim()) {
+  (async () => {
+    const entries = _extraArchivesEnv.split(",").map((s) => s.trim()).filter(Boolean);
+    for (const entry of entries) {
+      const eqIdx = entry.indexOf("=");
+      if (eqIdx < 1) {
+        logger.warn({ entry }, "[extra games] invalid format, expected Name=URL");
+        continue;
+      }
+      const gameName = entry.slice(0, eqIdx).trim();
+      const url = entry.slice(eqIdx + 1).trim();
+      const sentinel = path.join(_gamesDest, gameName, "gs2c", "html5Game.html");
+      if (fs.existsSync(sentinel)) {
+        logger.info({ gameName }, "[extra games] already extracted, skipping");
+        continue;
+      }
+      await _downloadAndExtract(url, _gamesDest, gameName);
+    }
+  })().catch((err) => logger.error({ err }, "[extra games] startup error"));
+}
+{
+  const _archiveDir = path.resolve(__dirname2, ".");
+  app.get("/archives/:filename", (req, res) => {
+    const { filename } = req.params;
+    if (!/^[\w\-]+\.tar\.gz$/.test(filename)) {
+      res.status(400).send("Invalid filename");
+      return;
+    }
+    const token = process.env["ARCHIVE_TOKEN"] || process.env["ADMIN_PASSWORD"] || "";
+    if (token) {
+      const authHeader = req.headers["authorization"] || "";
+      const queryToken = req.query["token"] || "";
+      const provided = authHeader.replace(/^Bearer\s+/i, "").trim() || queryToken;
+      if (provided !== token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+    }
+    const filePath = path.join(_archiveDir, filename);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    fs.createReadStream(filePath).pipe(res);
+  });
+  logger.info("[archives] CDN endpoint mounted at /archives/:filename");
 }
 app.get("/socket_config.json", (_req, res) => {
   res.json({
@@ -41473,7 +41592,7 @@ app.all("/game/GatesofOlympus1000/server", async (req, res) => {
       return;
     }
     if (action === "update") {
-      const balanceCents2 = await _gsGetBalance(token);
+      const balanceCents2 = await _getLastOrDbBalance(token);
       const balStr = _fmtBalance(balanceCents2);
       res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
       return;
@@ -41489,6 +41608,7 @@ app.all("/game/GatesofOlympus1000/server", async (req, res) => {
       }
       const safeBet2 = Math.max(betCents2, 1);
       const { newBalance, winCents } = await _gsProcessSpin(token, safeBet2);
+      _recordSentBalance(token, newBalance);
       let screen2;
       let wlcv2 = "";
       if (winCents > 0) {
@@ -41501,11 +41621,13 @@ app.all("/game/GatesofOlympus1000/server", async (req, res) => {
       res.send(_gsBuildSpinResponse(newBalance, screen2, winCents, wlcv2));
       return;
     }
+    _lazyLoadGsTemplate();
     if (!_gsTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
-    const balanceCents = await _gsGetBalance(token);
+    const balanceCents = await _getLastOrDbBalance(token);
+    _recordSentBalance(token, balanceCents);
     res.send(_gsBuildResponse(_gsTemplate, balanceCents));
   } catch (err) {
     logger.error({ err }, "[GS/server] error");
@@ -41528,7 +41650,7 @@ app.all("/game/SweetBonanza/server", async (req, res) => {
       return;
     }
     if (action === "update") {
-      const balanceCents2 = await _gsGetBalance(token);
+      const balanceCents2 = await _getLastOrDbBalance(token);
       const balStr = _fmtBalance(balanceCents2);
       res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
       return;
@@ -41544,6 +41666,7 @@ app.all("/game/SweetBonanza/server", async (req, res) => {
       }
       const safeBet = Math.max(betCents, 1);
       const { newBalance, winCents } = await _gsProcessSpin(token, safeBet);
+      _recordSentBalance(token, newBalance);
       let screenSB;
       let wlcvSB = "";
       if (winCents > 0) {
@@ -41556,11 +41679,13 @@ app.all("/game/SweetBonanza/server", async (req, res) => {
       res.send(_gsBuildSpinResponse(newBalance, screenSB, winCents, wlcvSB));
       return;
     }
+    _lazyLoadGsTemplate();
     if (!_gsTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
-    const balanceCents = await _gsGetBalance(token);
+    const balanceCents = await _getLastOrDbBalance(token);
+    _recordSentBalance(token, balanceCents);
     res.send(_gsBuildResponse(_gsTemplate, balanceCents));
   } catch (err) {
     logger.error({ err }, "[GS/server] SweetBonanza error");
@@ -41611,11 +41736,25 @@ app.use("/game", import_express6.default.static(publicDir, {
   }
 }));
 var _gameReadyTokens = /* @__PURE__ */ new Map();
+var _lastSentBalance = /* @__PURE__ */ new Map();
+function _recordSentBalance(token, balanceCents) {
+  if (token) _lastSentBalance.set(token, balanceCents);
+}
+var _lastSpinWin = /* @__PURE__ */ new Map();
+function _recordSpinWin(token, winCents) {
+  if (token) _lastSpinWin.set(token, { winCents, ts: Date.now() });
+}
+async function _getLastOrDbBalance(token) {
+  if (token && _lastSentBalance.has(token)) return _lastSentBalance.get(token);
+  const dbBalance = await _gsGetBalance(token);
+  _recordSentBalance(token, dbBalance);
+  return dbBalance;
+}
 app.all("/gs2c/reloadBalance.do", async (req, res) => {
   const mgckey = req.query["mgckey"] || req.body?.["mgckey"] || "";
   const token = _gsExtractToken(mgckey || void 0);
   if (token) _gameReadyTokens.set(token, Date.now());
-  const balanceCents = await _gsGetBalance(token);
+  const balanceCents = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(balanceCents);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -41676,6 +41815,11 @@ app.all("/gs2c/session/keepAlive.do", (_req, res) => {
   res.json({ status: "OK" });
 });
 var _gsSrcPaths = [
+  // Railway: games extracted to _ppDest (/app/games or /data/games)
+  path.join(_ppDest, "GatesofOlympus1000", "gs2c", "ge", "v3", "gameService.html"),
+  path.join(_ppDest, "BiggerBassBonanza", "gs2c", "ge", "v3", "gameService.html"),
+  path.join(_ppDest, "SweetBonanza", "gs2c", "ge", "v3", "gameService.html"),
+  // Replit dev: games in public/games/
   path.resolve(__dirname2, "../public/games/GatesofOlympus1000/gs2c/ge/v3/gameService.html"),
   path.resolve(__dirname2, "../public/games/BiggerBassBonanza/gs2c/ge/v3/gameService.html"),
   path.resolve(__dirname2, "../public/games/SweetBonanza/gs2c/ge/v3/gameService.html")
@@ -41687,6 +41831,26 @@ for (const p of _gsSrcPaths) {
     if (_gsTemplate) break;
   } catch (_) {
   }
+}
+if (!_gsTemplate) {
+  logger.warn({ paths: _gsSrcPaths }, "[gs2c] WARN: gameService.html template not found at startup \u2014 will retry lazily on first spin");
+} else {
+  logger.info("[gs2c] gameService.html template loaded OK");
+}
+function _lazyLoadGsTemplate() {
+  if (_gsTemplate) return _gsTemplate;
+  for (const p of _gsSrcPaths) {
+    try {
+      const s = fs.readFileSync(p, "utf8");
+      if (s) {
+        _gsTemplate = s;
+        logger.info({ p }, "[gs2c] template lazy-loaded OK");
+        return s;
+      }
+    } catch (_) {
+    }
+  }
+  return "";
 }
 var _SPIN_SYMBOLS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
 function _gsRandomScreen() {
@@ -41741,6 +41905,12 @@ function _gsExtractToken(mgckey) {
   const tilde = rest.indexOf("~");
   return tilde === -1 ? rest : rest.slice(0, tilde);
 }
+var _LOBBY_URL = process.env.LOBBY_URL || "";
+app.get("/api/config.js", (_req, res) => {
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.send(`window._CASINO_CONFIG=${JSON.stringify({ lobbyUrl: _LOBBY_URL })};`);
+});
 var _SUPABASE_CALLBACK_URL = process.env.SUPABASE_CALLBACK_URL || "https://iktzptypjftpnsyfhczt.supabase.co/functions/v1/casino-proxy/balance-callback";
 var _SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || "";
 function _pushBalanceToReaddy(username, balanceCents, supabaseUid) {
@@ -41822,6 +41992,7 @@ async function _gsProcessSpin(token, betCents) {
   const safeBet = Math.max(betCents, 1);
   const rtpPercent = await _getRtpForToken(token);
   if (!token) {
+    logger.warn("[spin] token=null \u2014 using 100000 fallback base");
     const rawWin = _calculateWin(safeBet, rtpPercent);
     return { newBalance: Math.max(0, 1e5 - safeBet + rawWin), winCents: rawWin };
   }
@@ -41831,6 +42002,7 @@ async function _gsProcessSpin(token, betCents) {
       [token]
     );
     if (!session) {
+      logger.warn({ token }, "[spin] SESSION NOT FOUND in DB \u2014 using 100000 fallback base (this causes \u20BA1000 credit!)");
       const rawWin2 = _calculateWin(safeBet, rtpPercent);
       return { newBalance: Math.max(0, 1e5 - safeBet + rawWin2), winCents: rawWin2 };
     }
@@ -41861,11 +42033,29 @@ async function _gsProcessSpin(token, betCents) {
       ).catch(() => null);
       _pushBalanceToReaddy(result.username, newBalance, uidRow?.supabase_uid);
     }
+    logger.info({ token, newBalance, winCents }, "[spin] DB spin OK");
+    _recordSpinWin(token, winCents);
     return { newBalance, winCents };
-  } catch {
+  } catch (err) {
+    logger.error({ token, err }, "[spin] DB error in _gsProcessSpin \u2014 returning DB balance");
     return { newBalance: await _gsGetBalance(token), winCents: 0 };
   }
 }
+casino_default.get("/spin/win", (req, res) => {
+  const token = req.query["token"] || req.headers["x-casino-token"] || "";
+  if (!token) {
+    res.json({ ok: false });
+    return;
+  }
+  const entry = _lastSpinWin.get(token);
+  const stale = !entry || Date.now() - entry.ts > 1e4;
+  if (stale) {
+    res.json({ ok: true, winCents: 0, fresh: false });
+    return;
+  }
+  _lastSpinWin.set(token, { winCents: entry.winCents, ts: 0 });
+  res.json({ ok: true, winCents: entry.winCents, fresh: true });
+});
 casino_default.all("/setSessionRtp", (req, res) => {
   const q = req.query;
   const b = req.body || {};
@@ -41887,22 +42077,47 @@ async function _gsGetBalance(token) {
       "SELECT player_id FROM player_sessions WHERE session_token = $1 AND expires_at > NOW()",
       [token]
     );
-    if (!session) return 1e5;
+    if (!session) {
+      logger.warn({ token }, "[balance] session not found in DB \u2014 returning 100000 fallback");
+      return 1e5;
+    }
     const player = await queryOne(
       "SELECT balance_cents FROM players WHERE id = $1 AND is_active = true",
       [session.player_id]
     );
-    return player?.balance_cents ?? 1e5;
-  } catch {
+    if (!player) {
+      logger.warn({ token, player_id: session.player_id }, "[balance] player not found \u2014 returning 100000 fallback");
+      return 1e5;
+    }
+    return player.balance_cents;
+  } catch (err) {
+    logger.error({ token, err }, "[balance] DB error in _gsGetBalance \u2014 returning 100000 fallback");
     return 1e5;
   }
 }
+var _MIN_BET_CENTS = 200;
+var _MAX_BET_CENTS = 1e6;
+var _COINS_20 = [0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500];
+var _COINS_12 = [0.2, 0.5, 1, 2.5, 5, 10, 25, 50, 100, 250, 500, 833];
+var _COINS_25 = [0.08, 0.2, 0.4, 1, 2, 4, 8, 20, 40, 80, 200, 400];
 function _gsBuildResponse(template, balanceCents) {
   const balStr = _fmtBalance(balanceCents);
   let body = template.replace(/balance=[\d,]+\.\d{2}/g, `balance=${balStr}`).replace(/balance_cash=[\d,]+\.\d{2}/g, `balance_cash=${balStr}`).replace(/balance_bonus=[\d,]+\.\d{2}/g, "balance_bonus=0.00").replace(/ntp=[\d,]+\.\d{2}/g, "ntp=0.00");
   if (!body.startsWith("err=")) {
     body = "err=0&" + body;
   }
+  return body;
+}
+function _gsBuildInitResponse(template, balanceCents, coins) {
+  const maxCoin = balanceCents / coins.length > 0 ? Infinity : Infinity;
+  const scList = coins.map((c) => c.toFixed(2)).join(",");
+  const defCoin = coins[0].toFixed(2);
+  let body = _gsBuildResponse(template, balanceCents);
+  body = body.replace(/sc=[0-9.,]+/, `sc=${scList}`);
+  body = body.replace(/defc=([0-9.]+)/, (_m, cur) => {
+    const curVal = parseFloat(cur);
+    return curVal < coins[0] ? `defc=${defCoin}` : `defc=${cur}`;
+  });
   return body;
 }
 function _gsBuildSpinResponse(balanceCents, screen, winCents = 0, wlcv = "") {
@@ -42007,20 +42222,24 @@ async function _gsBBBHandler(req, res) {
     logger.info({ action, mgckey: mgckey.slice(0, 30) }, "[BBB] gameService request");
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-store");
+    _lazyLoadGsTemplate();
     if (!_gsTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
     if (action === "doSpin") {
-      const coinFloat = parseFloat(coinRaw) || 0.1;
-      const betCents = Math.max(1, Math.round(coinFloat * 12 * 100));
+      const coinFloat = parseFloat(coinRaw) || _COINS_12[0];
+      const rawBet = Math.round(coinFloat * 12 * 100);
+      const betCents = Math.min(_MAX_BET_CENTS, Math.max(_MIN_BET_CENTS, rawBet));
       const { newBalance, winCents } = await _gsProcessSpin(token, betCents);
+      _recordSentBalance(token, newBalance);
       const screen = _gsBBBRandomScreen();
       res.send(_gsBBBSpinResponse(_gsTemplate, newBalance, screen, coinFloat, winCents));
     } else {
-      const balanceCents = await _gsGetBalance(token);
+      const balanceCents = await _getLastOrDbBalance(token);
+      _recordSentBalance(token, balanceCents);
       if (token) _gameReadyTokens.set(token, Date.now());
-      res.send(_gsBuildResponse(_gsTemplate, balanceCents));
+      res.send(_gsBuildInitResponse(_gsTemplate, balanceCents, _COINS_12));
     }
   } catch (err) {
     logger.error({ err }, "[BBB] gameService error");
@@ -42040,22 +42259,23 @@ async function _gsHandler(req, res) {
     if (_debugLogs.length > MAX_DEBUG_LOGS) _debugLogs.splice(0, _debugLogs.length - MAX_DEBUG_LOGS);
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-store");
+    _lazyLoadGsTemplate();
     if (!_gsTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
     if (action === "doSpin") {
       const totalBetRaw = q["total_bet"] || b["total_bet"] || q["bet"] || b["bet"] || "";
-      let betCents;
-      if (totalBetRaw && parseFloat(totalBetRaw) > 0 && parseFloat(totalBetRaw) < 1e4) {
-        betCents = Math.round(parseFloat(totalBetRaw) * 100);
+      let rawBet;
+      if (totalBetRaw && parseFloat(totalBetRaw) > 0 && parseFloat(totalBetRaw) < 1e6) {
+        rawBet = Math.round(parseFloat(totalBetRaw) * 100);
       } else {
-        const coinFloat = parseFloat(coinRaw) || 0;
-        betCents = Math.round(coinFloat * 20 * 100);
+        const coinFloat = parseFloat(coinRaw) || _COINS_20[0];
+        rawBet = Math.round(coinFloat * 20 * 100);
       }
-      const minBet = 1;
-      const safeBet = Math.max(betCents, minBet);
+      const safeBet = Math.min(_MAX_BET_CENTS, Math.max(_MIN_BET_CENTS, rawBet));
       const { newBalance, winCents } = await _gsProcessSpin(token, safeBet);
+      _recordSentBalance(token, newBalance);
       let screenGS;
       let wlcvGS = "";
       if (winCents > 0) {
@@ -42067,8 +42287,9 @@ async function _gsHandler(req, res) {
       }
       res.send(_gsBuildSpinResponse(newBalance, screenGS, winCents, wlcvGS));
     } else {
-      const balanceCents = await _gsGetBalance(token);
-      res.send(_gsBuildResponse(_gsTemplate, balanceCents));
+      const balanceCents = await _getLastOrDbBalance(token);
+      _recordSentBalance(token, balanceCents);
+      res.send(_gsBuildInitResponse(_gsTemplate, balanceCents, _COINS_20));
     }
   } catch (err) {
     logger.error({ err }, "gameService error");
@@ -42094,7 +42315,7 @@ app.all("/games/GatesofOlympus1000/gs2c/reloadBalance.do", async (req, res) => {
   const mgckey = req.query["mgckey"] || req.body?.["mgckey"] || "";
   const token = _gsExtractToken(mgckey || void 0);
   if (token) _gameReadyTokens.set(token, Date.now());
-  const balanceCents = await _gsGetBalance(token);
+  const balanceCents = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(balanceCents);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -42136,7 +42357,7 @@ app.all("/games/SweetBonanza/gs2c/reloadBalance.do", async (req, res) => {
   const mgckey = req.query["mgckey"] || req.body?.["mgckey"] || "";
   const token = _gsExtractToken(mgckey || void 0);
   if (token) _gameReadyTokens.set(token, Date.now());
-  const balanceCents = await _gsGetBalance(token);
+  const balanceCents = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(balanceCents);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -42187,25 +42408,29 @@ app.all("/game/BiggerBassBonanza/server", async (req, res) => {
       return;
     }
     if (action === "update") {
-      const balanceCents2 = await _gsGetBalance(token);
+      const balanceCents2 = await _getLastOrDbBalance(token);
       const balStr = _fmtBalance(balanceCents2);
       res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
       return;
     }
     if (action === "doSpin") {
-      const coinFloat = parseFloat(coinRaw) || 0.1;
-      const betCents = Math.max(1, Math.round(coinFloat * 12 * 100));
+      const coinFloat = parseFloat(coinRaw) || _COINS_12[0];
+      const rawBet = Math.round(coinFloat * 12 * 100);
+      const betCents = Math.min(_MAX_BET_CENTS, Math.max(_MIN_BET_CENTS, rawBet));
       const { newBalance, winCents } = await _gsProcessSpin(token, betCents);
+      _recordSentBalance(token, newBalance);
       const screen = _gsBBBRandomScreen();
       res.send(_gsBBBSpinResponse(_gsTemplate, newBalance, screen, coinFloat, winCents));
       return;
     }
+    _lazyLoadGsTemplate();
     if (!_gsTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
-    const balanceCents = await _gsGetBalance(token);
-    res.send(_gsBuildResponse(_gsTemplate, balanceCents));
+    const balanceCents = await _getLastOrDbBalance(token);
+    _recordSentBalance(token, balanceCents);
+    res.send(_gsBuildInitResponse(_gsTemplate, balanceCents, _COINS_12));
   } catch (err) {
     logger.error({ err }, "[GS/server] BiggerBassBonanza error");
     res.status(500).send("err=1&msg=server_error");
@@ -42221,7 +42446,7 @@ app.all("/games/BiggerBassBonanza/gs2c/reloadBalance.do", async (req, res) => {
   const mgckey = req.query["mgckey"] || req.body?.["mgckey"] || "";
   const token = _gsExtractToken(mgckey || void 0);
   if (token) _gameReadyTokens.set(token, Date.now());
-  const balanceCents = await _gsGetBalance(token);
+  const balanceCents = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(balanceCents);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -42255,12 +42480,15 @@ app.all("/games/BiggerBassBonanza/gs2c/openGame.do", (_req, res) => {
   res.redirect("/go-bbb-game.html");
 });
 var _wgTemplate = "";
-try {
-  _wgTemplate = fs.readFileSync(
-    path.resolve(__dirname2, "../public/games/WolfGold/gs2c/ge/v3/gameService.html"),
-    "utf8"
-  );
-} catch (_) {
+for (const _wgp of [
+  path.join(_wgDest, "WolfGold", "gs2c", "ge", "v3", "gameService.html"),
+  path.resolve(__dirname2, "../public/games/WolfGold/gs2c/ge/v3/gameService.html")
+]) {
+  try {
+    _wgTemplate = fs.readFileSync(_wgp, "utf8");
+    if (_wgTemplate) break;
+  } catch (_) {
+  }
 }
 if (!_wgTemplate) _wgTemplate = _gsTemplate;
 var _WG_SYMBOLS = [3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -42355,19 +42583,7 @@ function _gsWGSpinResponse(template, balanceCents, screen, coinValue, winCents =
   return [...spinKeys, ...rest].map((k) => `${k}=${map[k]}`).join("&");
 }
 function _gsWGBuildInitResponse(template, balanceCents) {
-  const allCoins = [0.01, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 3, 5];
-  const maxCoin = balanceCents / 25 / 100;
-  const allowed = allCoins.filter((c) => c <= maxCoin + 1e-3);
-  const safeAllowed = allowed.length > 0 ? allowed : [allCoins[0]];
-  const scList = safeAllowed.map((c) => c.toFixed(2)).join(",");
-  const maxAllowed = safeAllowed[safeAllowed.length - 1];
-  let body = template.replace(/balance=[\d,]+\.\d{2}/g, `balance=${_fmtBalance(balanceCents)}`).replace(/balance_cash=[\d,]+\.\d{2}/g, `balance_cash=${_fmtBalance(balanceCents)}`).replace(/balance_bonus=[\d,]+\.\d{2}/g, "balance_bonus=0.00").replace(/ntp=[\d,]+\.\d{2}/g, "ntp=0.00").replace(/sc=[0-9.,]+/, `sc=${scList}`);
-  body = body.replace(/defc=([0-9.]+)/, (_m, cur) => {
-    const curVal = parseFloat(cur);
-    return curVal > maxAllowed ? `defc=${maxAllowed.toFixed(2)}` : `defc=${cur}`;
-  });
-  if (!body.startsWith("err=")) body = "err=0&" + body;
-  return body;
+  return _gsBuildInitResponse(template, balanceCents, _COINS_25);
 }
 async function _gsWGHandler(req, res) {
   try {
@@ -42381,18 +42597,27 @@ async function _gsWGHandler(req, res) {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-store");
     if (!_wgTemplate) {
+      _lazyLoadGsTemplate();
+      if (!_wgTemplate) _wgTemplate = _gsTemplate;
+    }
+    if (!_wgTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
     if (action === "doSpin") {
-      const coinFloat = parseFloat(coinRaw) || 0.01;
-      const betCents = Math.max(1, Math.round(coinFloat * 25 * 100));
+      const coinFloat = parseFloat(coinRaw) || _COINS_25[0];
+      const rawBet = Math.round(coinFloat * 25 * 100);
+      const betCents = Math.min(_MAX_BET_CENTS, Math.max(_MIN_BET_CENTS, rawBet));
       const reqCounter = q["counter"] || b["counter"] || "";
       const { newBalance, winCents } = await _gsProcessSpin(token, betCents);
+      _recordSentBalance(token, newBalance);
+      logger.info({ token: token?.slice(0, 12), newBalance, winCents, betCents }, "[WG] doSpin result");
       const screen = _gsWGRandomScreen();
       res.send(_gsWGSpinResponse(_wgTemplate, newBalance, screen, coinFloat, winCents, reqCounter));
     } else {
-      const balanceCents = await _gsGetBalance(token);
+      const balanceCents = await _getLastOrDbBalance(token);
+      _recordSentBalance(token, balanceCents);
+      logger.info({ token: token?.slice(0, 12), balanceCents, action: action || "init" }, "[WG] init/balance response");
       if (token) _gameReadyTokens.set(token, Date.now());
       res.send(_gsWGBuildInitResponse(_wgTemplate, balanceCents));
     }
@@ -42414,7 +42639,7 @@ app.all("/games/WolfGold/gs2c/reloadBalance.do", async (req, res) => {
   const q = req.query;
   const b = req.body || {};
   const token = _gsExtractToken(q["mgckey"] || b["mgckey"] || void 0);
-  const bal = await _gsGetBalance(token);
+  const bal = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(bal);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -42456,12 +42681,15 @@ app.all("/games/WolfGold/gs2c/promo/active/", (_req, res) => {
   res.json({ promotions: [] });
 });
 var _fpTemplate = "";
-try {
-  _fpTemplate = fs.readFileSync(
-    path.resolve(__dirname2, "../public/games/FruitParty/gs2c/ge/v3/gameService.html"),
-    "utf8"
-  );
-} catch (_) {
+for (const _fpp of [
+  path.join(_ppDest, "FruitParty", "gs2c", "ge", "v3", "gameService.html"),
+  path.resolve(__dirname2, "../public/games/FruitParty/gs2c/ge/v3/gameService.html")
+]) {
+  try {
+    _fpTemplate = fs.readFileSync(_fpp, "utf8");
+    if (_fpTemplate) break;
+  } catch (_) {
+  }
 }
 if (!_fpTemplate) _fpTemplate = _gsTemplate;
 var _FP_SYMBOLS = [3, 4, 5, 6, 7, 8, 9];
@@ -42542,19 +42770,26 @@ async function _gsFPHandler(req, res) {
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-store");
     if (!_fpTemplate) {
+      _lazyLoadGsTemplate();
+      if (!_fpTemplate) _fpTemplate = _gsTemplate;
+    }
+    if (!_fpTemplate) {
       res.status(503).send("err=1&msg=template_missing");
       return;
     }
     if (action === "doSpin") {
-      const coinFloat = parseFloat(coinRaw) || 0.1;
-      const betCents = Math.max(1, Math.round(coinFloat * 20 * 100));
+      const coinFloat = parseFloat(coinRaw) || _COINS_20[0];
+      const rawBet = Math.round(coinFloat * 20 * 100);
+      const betCents = Math.min(_MAX_BET_CENTS, Math.max(_MIN_BET_CENTS, rawBet));
       const { newBalance, winCents } = await _gsProcessSpin(token, betCents);
+      _recordSentBalance(token, newBalance);
       const screen = _gsFPRandomScreen();
       res.send(_gsFPSpinResponse(_fpTemplate, newBalance, screen, coinFloat, winCents));
     } else {
-      const balanceCents = await _gsGetBalance(token);
+      const balanceCents = await _getLastOrDbBalance(token);
+      _recordSentBalance(token, balanceCents);
       if (token) _gameReadyTokens.set(token, Date.now());
-      res.send(_gsBuildResponse(_fpTemplate, balanceCents));
+      res.send(_gsBuildInitResponse(_fpTemplate, balanceCents, _COINS_20));
     }
   } catch (err) {
     logger.error({ err }, "[FP] gameService error");
@@ -42574,7 +42809,7 @@ app.all("/games/FruitParty/gs2c/reloadBalance.do", async (req, res) => {
   const q = req.query;
   const b = req.body || {};
   const token = _gsExtractToken(q["mgckey"] || b["mgckey"] || void 0);
-  const bal = await _gsGetBalance(token);
+  const bal = await _getLastOrDbBalance(token);
   const balStr = _fmtBalance(bal);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.send(`balance=${balStr}&balance_cash=${balStr}&balance_bonus=0.00&ntp=0.00`);
@@ -42629,7 +42864,8 @@ app.all("/game/FruitParty/server", async (req, res) => {
     return;
   }
   if (action === "update") {
-    const bal = await _gsGetBalance(token);
+    const bal = await _getLastOrDbBalance(token);
+    _recordSentBalance(token, bal);
     const bs = _fmtBalance(bal);
     res.send(`err=0&balance=${bs}&balance_cash=${bs}&balance_bonus=0.00&ntp=0.00`);
     return;
@@ -42641,7 +42877,8 @@ app.all("/game/WolfGold/server", async (req, res) => {
   const b = req.body || {};
   const action = q["action"] || b["action"] || "";
   const mgckey = q["mgckey"] || b["mgckey"] || "";
-  const token = _gsExtractToken(mgckey || void 0);
+  const sessionIdParam = q["sessionId"] || b["sessionId"] || "";
+  const token = _gsExtractToken(mgckey || void 0) || (sessionIdParam && sessionIdParam !== "null" ? sessionIdParam : null);
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-store");
   logger.info({ action, path: req.path }, "[WG/server] request");
@@ -42650,7 +42887,8 @@ app.all("/game/WolfGold/server", async (req, res) => {
     return;
   }
   if (action === "update") {
-    const bal = await _gsGetBalance(token);
+    const bal = await _getLastOrDbBalance(token);
+    _recordSentBalance(token, bal);
     const bs = _fmtBalance(bal);
     res.send(`err=0&balance=${bs}&balance_cash=${bs}&balance_bonus=0.00&ntp=0.00`);
     return;
@@ -42992,37 +43230,151 @@ var _quaternionPatch = `
     };
     window._buildPatchBMRL=true;
   }
+
+  /* === Patch 10: VideoSlotsConnectionXTLayer.SetPaytableInfo null-guard ===
+     paytable= is stripped from doSpin responses to prevent the win-table popup
+     from covering the spin animation. However SetPaytableInfo is still invoked
+     every frame and crashes with:
+       TypeError: Cannot read properties of null (reading '0')
+     when the paytable argument is null, cascading into repeated DoFrameErrors
+     that freeze the canvas.
+     Fix: silently return when first argument (paytable rows) is null/undefined,
+     and wrap the rest with try/catch so any other edge case is also suppressed. */
+  if(typeof VideoSlotsConnectionXTLayer!=='undefined'&&VideoSlotsConnectionXTLayer.prototype&&
+     typeof VideoSlotsConnectionXTLayer.prototype.SetPaytableInfo==='function'){
+    var _origSPI=VideoSlotsConnectionXTLayer.prototype.SetPaytableInfo;
+    VideoSlotsConnectionXTLayer.prototype.SetPaytableInfo=function(pt){
+      if(pt==null||pt===undefined) return;
+      try{ return _origSPI.apply(this,arguments); }catch(e){}
+    };
+    window._buildPatchVSCXTL=true;
+  }
+
+  /* === Patch 11: VideoSlotsConnectionXTLayer \u2014 blanket null-guard for all methods ===
+     Any other method on this class that reads paytable state could crash similarly.
+     Wrap the entire prototype defensively so spin-triggered calls that receive
+     null arguments are silently no-op rather than cascading into frame freezes. */
+  if(typeof VideoSlotsConnectionXTLayer!=='undefined'&&VideoSlotsConnectionXTLayer.prototype){
+    var _vsProto=VideoSlotsConnectionXTLayer.prototype;
+    ['UpdatePaytable','OnPaytableReceived','ParsePaytable','SetupPaytable',
+     'RefreshPaytable','OnGetPaytable','LoadPaytable'].forEach(function(m){
+      if(typeof _vsProto[m]==='function'){
+        var _ov=_vsProto[m];
+        _vsProto[m]=function(){
+          try{ return _ov.apply(this,arguments); }catch(e){}
+        };
+      }
+    });
+    window._buildPatchVSCXTL2=true;
+  }
+
+  /* === Patch 12: gameService response interceptor ===
+     Intercepts ALL gameService fetch calls (loadGame, doSpin, doFreeSpin).
+     On EVERY response: extracts balance= (TRY float) and posts GAME_BALANCE to
+     parent so the adapter can keep _prevBalance in sync with the game engine.
+     On SPIN responses only: also extracts w= and posts SPIN_WIN.
+     WHY: Without this, the adapter sends EVT_RELOAD_BALANCE with the full DB
+     balance (~\u20BA993k) while the game credit is at a much smaller value (e.g.
+     \u20BA6k) \u2192 the game credit counter animates upward for a very long time. */
+  (function(){
+    var _origF=window.fetch;
+    if(typeof _origF!=='function') return;
+    window.fetch=function(url,opts){
+      var urlStr=typeof url==='string'?url:(url&&url.url?url.url:'');
+      /* Match both PP gameService URLs and WG proxy server URL */
+      var isGS=urlStr.indexOf('gameService')!==-1||urlStr.indexOf('/game/WolfGold/server')!==-1||urlStr.indexOf('/game/')!==-1&&urlStr.indexOf('action=')!==-1;
+      var isSpin=isGS&&(urlStr.indexOf('doSpin')!==-1||urlStr.indexOf('doFreeSpin')!==-1||urlStr.indexOf('action=doSpin')!==-1||urlStr.indexOf('action=doFreeSpin')!==-1);
+      var p=_origF.apply(this,arguments);
+      if(!isGS) return p;
+      return p.then(function(resp){
+        var clone=resp.clone();
+        clone.text().then(function(txt){
+          /* balance= \u2014 present in every gameService response */
+          var bm=txt.match(/(?:^|&)balance=([0-9]+(?:.[0-9]+)?)/);
+          if(bm){
+            try{ window.parent.postMessage({type:'GAME_BALANCE',bal:parseFloat(bm[1])},'*'); }catch(e){}
+          }
+          /* w= \u2014 only in spin responses */
+          if(isSpin){
+            var wm=txt.match(/(?:^|&)w=([0-9]+(?:.[0-9]+)?)/);
+            var win=wm?parseFloat(wm[1]):0;
+            try{ window.parent.postMessage({type:'SPIN_WIN',win:win},'*'); }catch(e){}
+          }
+        }).catch(function(){});
+        return resp;
+      });
+    };
+    window._buildPatchSpinWin=true;
+  })();
 })();
 `;
-app.get(/\/games\/.*\/build\.js(\?.*)?$/, (_req, res) => {
+app.get(/\/games\/.*\/build\.js(\?.*)?$/, async (_req, res) => {
   try {
     const urlPath = _req.path.split("?")[0];
     const isWG = urlPath.startsWith("/games/WolfGold/");
-    const baseDir = isWG ? _wgDest : publicDir;
-    const resolvedPath = isWG ? urlPath.replace(/^\/games\/WolfGold\//, "/WolfGold/") : urlPath;
-    const filePath = path.join(baseDir, resolvedPath);
+    const isPP = ["/games/GatesofOlympus1000/", "/games/FruitParty/", "/games/BiggerBassBonanza/"].some((p) => urlPath.startsWith(p));
+    let filePath;
+    if (isWG) {
+      filePath = path.join(_wgDest, urlPath.replace(/^\/games\/WolfGold\//, "/WolfGold/"));
+    } else if (isPP) {
+      filePath = path.join(_ppDest, urlPath.replace(/^\/games\//, "/"));
+    } else {
+      filePath = path.join(publicDir, urlPath);
+    }
     if (!_buildJsCache.has(filePath)) {
-      const src = fs.readFileSync(filePath).toString("utf8");
-      const patched = Buffer.from("window._buildPatchV=28;\n" + src + _quaternionPatch);
+      let src;
+      if (fs.existsSync(filePath)) {
+        src = fs.readFileSync(filePath).toString("utf8");
+      } else if (_gameAssetProxy) {
+        logger.info({ urlPath }, "[build.js] local file missing, fetching from proxy");
+        const upstream = `${_gameAssetProxy.replace(/\/$/, "")}${urlPath}`;
+        const resp = await fetch(upstream);
+        if (!resp.ok) throw new Error(`Proxy fetch failed: ${resp.status} for ${upstream}`);
+        src = await resp.text();
+      } else {
+        throw new Error(`File not found and no proxy configured: ${filePath}`);
+      }
+      const patched = Buffer.from("window._buildPatchV=33;\n" + src + _quaternionPatch);
       _buildJsCache.set(filePath, patched);
-      logger.info({ filePath }, "[build.js] cached in memory (v12 + UHT_ONLINE=true + sessionKeyV2 fix + guards)");
+      logger.info({ filePath }, "[build.js] cached in memory (v33 _getLastOrDbBalance caches DB fallback immediately)");
     }
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.setHeader("X-Build-Version", "patch-v12");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Build-Version", "patch-v33");
     res.send(_buildJsCache.get(filePath));
   } catch (err) {
     res.status(500).send(`// build.js read error: ${err && err.message}`);
   }
 });
 var _logoInfoCache = /* @__PURE__ */ new Map();
-app.get(/\/games\/.*\/logo_info\.js(\?.*)?$/, (_req, res) => {
+app.get(/\/games\/.*\/logo_info\.js(\?.*)?$/, async (_req, res) => {
   try {
     const urlPath = _req.path.split("?")[0];
-    const isWG2 = urlPath.startsWith("/games/WolfGold/");
-    const filePath = isWG2 ? path.join(_wgDest, urlPath.replace(/^\/games\/WolfGold\//, "/WolfGold/")) : path.join(publicDir, urlPath);
+    const _liGameMatch = urlPath.match(/^\/games\/([^/]+)\//);
+    const _liGame = _liGameMatch ? _liGameMatch[1] : "";
+    const isWG2 = _liGame === "WolfGold";
+    const isPP2 = ["GatesofOlympus1000", "FruitParty", "BiggerBassBonanza"].includes(_liGame);
+    let filePath;
+    if (isWG2) {
+      filePath = path.join(_wgDest, "WolfGold", "gs2c", "common", "v1", "games-html5", "operator_logos", "logo_info.js");
+    } else if (isPP2) {
+      filePath = path.join(_ppDest, _liGame, "gs2c", "common", "v1", "games-html5", "operator_logos", "logo_info.js");
+    } else {
+      filePath = path.join(publicDir, urlPath);
+    }
     if (!_logoInfoCache.has(filePath)) {
-      let src = fs.readFileSync(filePath);
+      let src;
+      if (fs.existsSync(filePath)) {
+        src = fs.readFileSync(filePath);
+      } else if (_gameAssetProxy) {
+        logger.info({ urlPath }, "[logo_info] local file missing, fetching from proxy");
+        const upstream = `${_gameAssetProxy.replace(/\/$/, "")}${urlPath}`;
+        const resp = await fetch(upstream);
+        if (!resp.ok) throw new Error(`Proxy fetch failed: ${resp.status}`);
+        src = Buffer.from(await resp.arrayBuffer());
+      } else {
+        throw new Error(`File not found: ${filePath}`);
+      }
       const OLD = Buffer.from("for (var a = 0; a < pc.asiaContents.length; a++)");
       const GUARD = Buffer.from("if (pc == null || pc.asiaContents == null) continue;\r\n                        for (var a = 0; a < pc.asiaContents.length; a++)");
       const idx = src.indexOf(OLD);
@@ -43050,96 +43402,345 @@ app.get(/^\/games\/.*\/gs2c\/html5Game\.do$/, (req, res) => {
     if (err) res.status(404).send("Not found");
   });
 });
-var _wgAssetProxy = process.env["WOLFGOLD_ASSET_PROXY"] || "";
-if (_wgAssetProxy) {
-  const _WG_ASSET_PATHS = [
-    /^\/games\/WolfGold\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs25wolfgold\/desktop\/game\//,
-    /^\/games\/WolfGold\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs25wolfgold\/mobile\//
-  ];
+var _mobileFallbackPath = /^\/games\/([^/]+)\/gs2c\/common\/v1\/games-html5\/games\/vs\/([^/]+)\/mobile(\/.*)?$/;
+app.use((req, res, next) => {
+  const m = _mobileFallbackPath.exec(req.path);
+  if (!m) return next();
+  const [, gameName, gameSlug, rest] = m;
+  const file = (rest || "/").replace(/^\//, "") || "";
+  if (!file) return next();
+  if (file === "bootstrap.js") {
+    const desktopBuildPath = req.path.replace("/mobile/bootstrap.js", "/desktop/build.js");
+    logger.info({ gameName, gameSlug }, "[mobile\u2192desktop] serving synthetic bootstrap.js \u2192 desktop/build.js");
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(`/* Mobile bootstrap redirected to desktop build */
+(function(){
+  var s=document.createElement('script');
+  s.src=${JSON.stringify(desktopBuildPath)};
+  (document.head||document.documentElement).appendChild(s);
+})();`);
+    return;
+  }
+  const baseDir = gameName === "WolfGold" ? _wgDest : _ppDest;
+  const desktopFile = path.join(
+    baseDir,
+    gameName,
+    "gs2c",
+    "common",
+    "v1",
+    "games-html5",
+    "games",
+    "vs",
+    gameSlug,
+    "desktop",
+    file
+  );
+  if (fs.existsSync(desktopFile)) {
+    logger.info({ gameName, file }, "[mobile\u2192desktop] serving desktop file fallback");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.sendFile(desktopFile);
+    return;
+  }
+  next();
+});
+var _gameAssetProxy = process.env["WOLFGOLD_ASSET_PROXY"] || process.env["GATESOFOLYMPUS_ASSET_PROXY"] || process.env["FRUITPARTY_ASSET_PROXY"] || "";
+if (_gameAssetProxy) {
+  const _GAME_PROXY_BASE = _gameAssetProxy.replace(/\/$/, "");
+  const _PROXY_SKIP_PATTERN = /\/(html5Game\.(html|do)|build\.js|logo_info\.js)(\?|$)/;
+  const _proxyCache = /* @__PURE__ */ new Map();
+  let _proxyCacheBytes = 0;
+  const _PROXY_CACHE_MAX_BYTES = 150 * 1024 * 1024;
+  const _proxyInflight = /* @__PURE__ */ new Map();
   app.use(async (req, res, next) => {
-    if (!_WG_ASSET_PATHS.some((r) => r.test(req.path))) return next();
-    const localPath = path.join(publicDir, req.path);
-    if (fs.existsSync(localPath)) return next();
-    try {
-      const upstream = `${_wgAssetProxy.replace(/\/$/, "")}${req.path}`;
-      logger.info({ path: req.path }, "[WG proxy] forwarding to Replit");
-      const resp = await fetch(upstream);
-      if (!resp.ok) {
-        next();
-        return;
-      }
-      const ct = resp.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      const buf = Buffer.from(await resp.arrayBuffer());
-      res.send(buf);
-    } catch (err) {
-      logger.warn({ err }, "[WG proxy] error, falling through");
-      next();
+    if (!req.path.startsWith("/games/")) return next();
+    if (_PROXY_SKIP_PATTERN.test(req.path)) return next();
+    const localPaths = [
+      path.join(publicDir, req.path),
+      // /app/public/games/...
+      path.join(_ppDest, req.path.replace(/^\/games\//, ""))
+      // /app/games/...
+    ];
+    if (localPaths.some((p) => fs.existsSync(p))) return next();
+    const cached = _proxyCache.get(req.path);
+    if (cached) {
+      res.setHeader("Content-Type", cached.ct);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res.setHeader("X-Proxy-Cache", "HIT");
+      res.send(cached.buf);
+      return;
     }
+    let fetchPromise = _proxyInflight.get(req.path);
+    if (!fetchPromise) {
+      fetchPromise = (async () => {
+        try {
+          const upstream = `${_GAME_PROXY_BASE}${req.path}`;
+          logger.info({ path: req.path }, "[game proxy] forwarding to Replit");
+          const resp = await fetch(upstream);
+          if (!resp.ok) return null;
+          const ct = resp.headers.get("content-type") || "application/octet-stream";
+          const buf = Buffer.from(await resp.arrayBuffer());
+          if (_proxyCacheBytes + buf.length <= _PROXY_CACHE_MAX_BYTES) {
+            _proxyCache.set(req.path, { ct, buf });
+            _proxyCacheBytes += buf.length;
+            logger.info({ path: req.path, bytes: buf.length, totalMB: (_proxyCacheBytes / 1048576).toFixed(1) }, "[game proxy] cached");
+          }
+          return { ct, buf };
+        } catch (err) {
+          logger.warn({ err }, "[game proxy] fetch error");
+          return null;
+        } finally {
+          _proxyInflight.delete(req.path);
+        }
+      })();
+      _proxyInflight.set(req.path, fetchPromise);
+    }
+    const result = await fetchPromise;
+    if (!result) {
+      next();
+      return;
+    }
+    res.setHeader("Content-Type", result.ct);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Proxy-Cache", "MISS");
+    res.send(result.buf);
   });
-}
-var _goAssetProxy = process.env["GATESOFOLYMPUS_ASSET_PROXY"] || process.env["WOLFGOLD_ASSET_PROXY"] || "";
-if (_goAssetProxy) {
-  const _GO_ASSET_PATHS = [
-    /^\/games\/GatesofOlympus1000\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs20olympx\/desktop\/game\//,
-    /^\/games\/GatesofOlympus1000\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs20olympx\/mobile\//
-  ];
-  app.use(async (req, res, next) => {
-    if (!_GO_ASSET_PATHS.some((r) => r.test(req.path))) return next();
-    const localPath = path.join(publicDir, req.path);
-    if (fs.existsSync(localPath)) return next();
-    try {
-      const upstream = `${_goAssetProxy.replace(/\/$/, "")}${req.path}`;
-      logger.info({ path: req.path }, "[GO proxy] forwarding to Replit");
-      const resp = await fetch(upstream);
-      if (!resp.ok) {
-        next();
-        return;
+  (async () => {
+    await new Promise((r) => setTimeout(r, 4e3));
+    const GOL_PFX = "/games/GatesofOlympus1000/gs2c/common/v1/games-html5/games/vs/vs20olympx/desktop";
+    const GAME_PFX = `${GOL_PFX}/game`;
+    const warmPaths = [
+      // client manifests (needed before any resource loads)
+      `${GOL_PFX}/client/resources.json`,
+      `${GOL_PFX}/client/game.json`,
+      // main texture / atlas packs (23 files, ~16 MB total)
+      ...Array.from({ length: 23 }, (_, i) => `${GAME_PFX}/main_resources${String(i).padStart(3, "0")}.json`),
+      // GUI atlas packs
+      ...["GUI000", "GUI001", "GUI002", "GUI003", "GUI004", "GUI005", "GUI006"].map((n) => `${GAME_PFX}/${n}.json`),
+      ...["GUI_resources000", "GUI_resources001", "GUI_resources002", "GUI_resources003", "GUI_resources004", "GUI_resources005", "GUI_resources006"].map((n) => `${GAME_PFX}/${n}.json`),
+      // game animation data
+      ...["game000", "game001", "game002", "game003", "game004"].map((n) => `${GAME_PFX}/${n}.json`),
+      // other resources
+      `${GAME_PFX}/other_resources000.json`,
+      `${GAME_PFX}/other_resources001.json`
+    ];
+    const _warmOne = async (assetPath) => {
+      if (_proxyCache.has(assetPath)) return;
+      const localCheck = [
+        path.join(publicDir, assetPath),
+        path.join(_ppDest, assetPath.replace(/^\/games\//, ""))
+      ];
+      if (localCheck.some((p) => fs.existsSync(p))) return;
+      try {
+        const upstream = `${_GAME_PROXY_BASE}${assetPath}`;
+        const resp = await fetch(upstream);
+        if (!resp.ok) return;
+        const ct = resp.headers.get("content-type") || "application/octet-stream";
+        const buf = Buffer.from(await resp.arrayBuffer());
+        if (_proxyCacheBytes + buf.length <= _PROXY_CACHE_MAX_BYTES && !_proxyCache.has(assetPath)) {
+          _proxyCache.set(assetPath, { ct, buf });
+          _proxyCacheBytes += buf.length;
+        }
+      } catch {
       }
-      const ct = resp.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      const buf = Buffer.from(await resp.arrayBuffer());
-      res.send(buf);
-    } catch (err) {
-      logger.warn({ err }, "[GO proxy] error, falling through");
-      next();
+    };
+    const BATCH = 10;
+    let warmed = 0;
+    for (let i = 0; i < warmPaths.length; i += BATCH) {
+      const batch = warmPaths.slice(i, i + BATCH);
+      await Promise.all(batch.map(_warmOne));
+      warmed += batch.length;
+      await new Promise((r) => setTimeout(r, 100));
     }
-  });
-}
-var _fpAssetProxy = process.env["FRUITPARTY_ASSET_PROXY"] || process.env["WOLFGOLD_ASSET_PROXY"] || "";
-if (_fpAssetProxy) {
-  const _FP_ASSET_PATHS = [
-    /^\/games\/FruitParty\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs20fruitparty\/desktop\/game\//,
-    /^\/games\/FruitParty\/gs2c\/common\/v1\/games-html5\/games\/vs\/vs20fruitparty\/mobile\//
-  ];
-  app.use(async (req, res, next) => {
-    if (!_FP_ASSET_PATHS.some((r) => r.test(req.path))) return next();
-    const localPath = path.join(publicDir, req.path);
-    if (fs.existsSync(localPath)) return next();
-    try {
-      const upstream = `${_fpAssetProxy.replace(/\/$/, "")}${req.path}`;
-      logger.info({ path: req.path }, "[FP proxy] forwarding to Replit");
-      const resp = await fetch(upstream);
-      if (!resp.ok) {
-        next();
-        return;
-      }
-      const ct = resp.headers.get("content-type") || "application/octet-stream";
-      res.setHeader("Content-Type", ct);
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      const buf = Buffer.from(await resp.arrayBuffer());
-      res.send(buf);
-    } catch (err) {
-      logger.warn({ err }, "[FP proxy] error, falling through");
-      next();
-    }
+    logger.info({ warmed, cacheMB: (_proxyCacheBytes / 1048576).toFixed(1) }, "[cache warmer] GOL assets pre-cached");
+  })().catch(() => {
   });
 }
 var GAME_ASSET_LONG = "public, max-age=31536000, immutable";
 var GAME_ASSET_SHORT = "public, max-age=86400";
 var NO_CACHE = "no-cache, no-store, must-revalidate";
+function _mimeFromPath(p) {
+  const ext = p.split(".").pop()?.toLowerCase() || "";
+  const map = {
+    js: "application/javascript",
+    mjs: "application/javascript",
+    css: "text/css",
+    html: "text/html; charset=utf-8",
+    json: "application/json",
+    xml: "application/xml",
+    wasm: "application/wasm",
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    mp3: "audio/mpeg",
+    ogg: "audio/ogg",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    ttf: "font/ttf",
+    woff: "font/woff",
+    woff2: "font/woff2",
+    ico: "image/x-icon"
+  };
+  return map[ext] || "application/octet-stream";
+}
+var _sbUrl = (process.env["SUPABASE_URL"] || "").replace(/\/$/, "");
+var _sbKey = process.env["SUPABASE_SERVICE_KEY"] || "";
+var _sbBucket = process.env["SUPABASE_BUCKET"] || "casino-games";
+var _sbProxyActive = false;
+var _sbStorageBase = "";
+var _sbCache = /* @__PURE__ */ new Map();
+var _sbCacheBytes = 0;
+var _SB_CACHE_MAX = 200 * 1024 * 1024;
+var _SB_STREAM_THRESHOLD = 4 * 1024 * 1024;
+var _SB_SKIP = /\/(html5Game\.(html|do)|build\.js|logo_info\.js)(\?|$)/;
+function _sbEvict(needed) {
+  const iter = _sbCache.keys();
+  while (_sbCacheBytes + needed > _SB_CACHE_MAX) {
+    const oldest = iter.next().value;
+    if (!oldest) break;
+    _sbCacheBytes -= _sbCache.get(oldest).buf.length;
+    _sbCache.delete(oldest);
+  }
+}
+function _sbGamePath(reqPath) {
+  let p = reqPath.replace(/^\/games\//, "");
+  if (p.startsWith("SweetBonanza/")) p = p.replace("SweetBonanza/", "FruitParty/");
+  return p;
+}
+if (_sbUrl && _sbKey) {
+  _sbProxyActive = true;
+  _sbStorageBase = `${_sbUrl}/storage/v1/object/${_sbBucket}`;
+  logger.info({ bucket: _sbBucket, url: _sbUrl }, "[supabase] storage proxy ACTIVE \u2014 59GB game library ready");
+  app.use(async (req, res, next) => {
+    if (!req.path.startsWith("/games/")) return next();
+    if (_SB_SKIP.test(req.path)) return next();
+    const localPaths = [
+      path.join(_ppDest, req.path.replace(/^\/games\//, "")),
+      path.join(_wgDest, req.path.replace(/^\/games\//, "")),
+      path.join(publicDir, req.path)
+    ];
+    if (localPaths.some((p) => fs.existsSync(p))) return next();
+    const sbPath = _sbGamePath(req.path);
+    const cacheKey = sbPath;
+    const cached = _sbCache.get(cacheKey);
+    if (cached) {
+      res.setHeader("Content-Type", cached.ct);
+      res.setHeader("Cache-Control", /\.(json|info|xml)$/i.test(sbPath) ? GAME_ASSET_SHORT : GAME_ASSET_LONG);
+      res.setHeader("X-Game-Source", "supabase-cache");
+      return res.send(cached.buf);
+    }
+    const upstreamUrl = `${_sbStorageBase}/${sbPath}`;
+    try {
+      const upstream = await fetch(upstreamUrl, {
+        headers: { "Authorization": `Bearer ${_sbKey}` }
+      });
+      if (!upstream.ok) {
+        if (upstream.status !== 404)
+          logger.warn({ status: upstream.status, sbPath }, "[supabase] upstream error");
+        return next();
+      }
+      const ct = upstream.headers.get("content-type") || _mimeFromPath(sbPath);
+      const clStr = upstream.headers.get("content-length") || "";
+      const cl = clStr ? parseInt(clStr, 10) : 0;
+      res.setHeader("Content-Type", ct);
+      res.setHeader("Cache-Control", /\.(json|info|xml)$/i.test(sbPath) ? GAME_ASSET_SHORT : GAME_ASSET_LONG);
+      res.setHeader("X-Game-Source", "supabase-live");
+      if (cl > 0) res.setHeader("Content-Length", cl);
+      if (cl > _SB_STREAM_THRESHOLD || upstream.body == null) {
+        if (upstream.body) {
+          const { Readable } = await import("stream");
+          const { pipeline } = await import("stream/promises");
+          try {
+            await pipeline(Readable.fromWeb(upstream.body), res);
+          } catch {
+          }
+        } else {
+          res.send(Buffer.from(await upstream.arrayBuffer()));
+        }
+        return;
+      }
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      _sbEvict(buf.length);
+      _sbCache.set(cacheKey, { ct, buf });
+      _sbCacheBytes += buf.length;
+      return res.send(buf);
+    } catch (err) {
+      logger.error({ err, sbPath }, "[supabase] proxy error");
+      return next();
+    }
+  });
+}
+var _desktopUA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+var _desktopUAScript = `<script>
+(function(){
+  var _desktop="${_desktopUA}";
+  try{Object.defineProperty(navigator,'userAgent',{get:function(){return _desktop;},configurable:true});}catch(e){}
+  try{Object.defineProperty(navigator,'platform',{get:function(){return 'MacIntel';},configurable:true});}catch(e){}
+  try{Object.defineProperty(navigator,'maxTouchPoints',{get:function(){return 0;},configurable:true});}catch(e){}
+  window._forcedDesktop=true;
+})();
+</script>`;
+var _html5GameCache = /* @__PURE__ */ new Map();
+app.get(/\/games\/[^/]+\/gs2c\/html5Game\.(html|do)(\?.*)?$/, async (req, res, next) => {
+  const urlPath = req.path.split("?")[0];
+  const gameMatch = urlPath.match(/^\/games\/([^/]+)\//);
+  if (!gameMatch) return next();
+  const gameName = gameMatch[1];
+  let filePath;
+  if (gameName === "WolfGold") {
+    filePath = path.join(_wgDest, "WolfGold", urlPath.replace(/^\/games\/WolfGold\//, ""));
+  } else if (_ppDest) {
+    filePath = path.join(_ppDest, gameName, urlPath.replace(new RegExp(`^/games/${gameName}/`), ""));
+  } else {
+    return next();
+  }
+  if (!_html5GameCache.has(filePath)) {
+    let src;
+    if (fs.existsSync(filePath)) {
+      src = fs.readFileSync(filePath, "utf8");
+    } else if (_sbProxyActive) {
+      logger.info({ urlPath }, "[html5Game] local file missing, fetching from Supabase");
+      try {
+        const sbPath = _sbGamePath(urlPath);
+        const resp = await fetch(`${_sbStorageBase}/${sbPath}`, {
+          headers: { "Authorization": `Bearer ${_sbKey}` }
+        });
+        if (!resp.ok) return next();
+        src = await resp.text();
+      } catch {
+        return next();
+      }
+    } else if (_gameAssetProxy) {
+      logger.info({ urlPath }, "[html5Game] local file missing, fetching from proxy");
+      try {
+        const upstream = `${_gameAssetProxy.replace(/\/$/, "")}${urlPath}`;
+        const resp = await fetch(upstream);
+        if (!resp.ok) return next();
+        src = await resp.text();
+      } catch {
+        return next();
+      }
+    } else {
+      return next();
+    }
+    let final;
+    if (/<head>/i.test(src)) {
+      final = src.replace(/<head>/i, "<head>" + _desktopUAScript);
+    } else if (/<html/i.test(src)) {
+      final = src.replace(/<html([^>]*)>/i, (m) => m + _desktopUAScript);
+    } else {
+      final = _desktopUAScript + src;
+    }
+    _html5GameCache.set(filePath, Buffer.from(final, "utf8"));
+    logger.info({ gameName, filePath }, "[html5Game] cached with desktop UA patch");
+  }
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(_html5GameCache.get(filePath));
+});
 app.use("/games/WolfGold", import_express6.default.static(path.join(_wgDest, "WolfGold"), {
   maxAge: 0,
   setHeaders: (res, filePath) => {
@@ -43152,6 +43753,27 @@ app.use("/games/WolfGold", import_express6.default.static(path.join(_wgDest, "Wo
     }
   }
 }));
+var _ppGameMeta = {
+  FruitParty: { gameId: "vs20fruitparty", title: "Fruit Party" },
+  BiggerBassBonanza: { gameId: "vs12bbb", title: "Bigger Bass Bonanza" },
+  SweetBonanza: { gameId: "vs20fruitsw", title: "Sweet Bonanza" }
+};
+for (const [_fgName, _fgMeta] of Object.entries(_ppGameMeta)) {
+  app.get(`/games/${_fgName}/gs2c/html5Game.html`, (_req, res) => {
+    try {
+      const _golHtml = path.join(_ppDest, "GatesofOlympus1000", "gs2c", "html5Game.html");
+      let html = fs.readFileSync(_golHtml, "utf8");
+      html = html.replace(/GatesofOlympus1000/g, _fgName);
+      html = html.replace(/vs20olympx/g, _fgMeta.gameId);
+      html = html.replace(/Gates of Olympus 1000/g, _fgMeta.title);
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(html);
+    } catch (err) {
+      res.status(500).send(`<!-- html5Game.html gen error: ${err?.message} -->`);
+    }
+  });
+}
 for (const _ppGame of ["GatesofOlympus1000", "FruitParty", "BiggerBassBonanza"]) {
   const _ppGameDir = path.join(_ppDest, _ppGame);
   app.use(`/games/${_ppGame}`, import_express6.default.static(_ppGameDir, {
@@ -43163,6 +43785,15 @@ for (const _ppGame of ["GatesofOlympus1000", "FruitParty", "BiggerBassBonanza"])
     }
   }));
 }
+var _sbStaticHeaders = (res, filePath) => {
+  if (/\.(html|do)$/i.test(filePath)) res.setHeader("Cache-Control", NO_CACHE);
+  else if (/\.(json|info|xml)$/i.test(filePath)) res.setHeader("Cache-Control", GAME_ASSET_SHORT);
+  else res.setHeader("Cache-Control", GAME_ASSET_LONG);
+};
+app.use("/games/SweetBonanza", (req, _res, next) => {
+  req.url = req.url.replace(/\/vs20fruitsw(\/|$)/g, "/vs20fruitparty$1");
+  next();
+}, import_express6.default.static(path.join(_ppDest, "FruitParty"), { maxAge: 0, setHeaders: _sbStaticHeaders }));
 app.use("/games", import_express6.default.static(path.join(publicDir, "games"), {
   maxAge: 0,
   // we set headers manually below
